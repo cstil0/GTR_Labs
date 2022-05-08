@@ -1,0 +1,11 @@
+Model Information:
+* title:	Toyota Land Cruiser
+* source:	https://sketchfab.com/3d-models/toyota-land-cruiser-91b5815c64eb43b0a88f6fdb9df774e4
+* author:	Renafox (https://sketchfab.com/kryik1023)
+
+Model License:
+* license type:	CC-BY-NC-4.0 (http://creativecommons.org/licenses/by-nc/4.0/)
+* requirements:	Author must be credited. No commercial use.
+
+If you use this 3D model in your project be sure to copy paste this credit wherever you share it:
+This work is based on "Toyota Land Cruiser" (https://sketchfab.com/3d-models/toyota-land-cruiser-91b5815c64eb43b0a88f6fdb9df774e4) by Renafox (https://sketchfab.com/kryik1023) licensed under CC-BY-NC-4.0 (http://creativecommons.org/licenses/by-nc/4.0/)

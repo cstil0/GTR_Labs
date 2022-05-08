@@ -1,0 +1,178 @@
+{
+	"background_color":[0.01,0.01,0.1],
+	"ambient_light":[0.1,0.1,0.2],
+	"environment":"night.hdre",
+	"camera_position":[-300,90,-150],
+	"camera_target":[0,40,0],
+	"camera_fov":60,
+	"entities":[
+		{
+			"name":"floor",
+			"type":"PREFAB",
+			"filename":"prefabs/floor.glb",
+			"position":[0,0,0]
+		},
+		{
+			"name":"car1",
+			"type":"PREFAB",
+			"filename":"prefabs/gmc/scene.gltf",
+			"position":[-80,-3.6,-100],
+			"angle":-45
+		},
+		{
+			"name":"car2",
+			"type":"PREFAB",
+			"filename":"prefabs/toyota_land_cruiser/scene.gltf",
+			"position":[-85.812,-1.7,233],
+			"angle":214.9,
+			"scale": [1.11, 1.11, 1.11]
+		},
+		{
+			"name":"house",
+			"type":"PREFAB",
+			"filename":"prefabs/house_test/scene.gltf",
+			"position":[300,0,200],
+			"scale":[0.4,0.4,0.4]
+		},
+		{
+			"name":"house",
+			"type":"PREFAB",
+			"filename":"prefabs/house_test/scene.gltf",
+			"position":[300,0,-200],
+			"scale":[0.4,0.4,0.4]
+		},
+		{
+			"name":"trash",
+			"type":"PREFAB",
+			"filename":"prefabs/trash_can/scene.gltf",
+			"position":[140,0,110],
+			"scale":[0.5,0.5,0.5]
+		},
+		{
+			"name":"tree",
+			"type":"PREFAB",
+			"filename":"prefabs/tree/scene.gltf",
+			"position":[102,0,401],
+			"angle":-90,
+			"scale":[0.8,0.8,0.8]
+		},
+		{
+			"name":"tree2",
+			"type":"PREFAB",
+			"filename":"prefabs/tree/scene.gltf",
+			"position":[44.2,0,-377.3],
+			"angle":-3.5,
+			"scale":[0.8,0.8,0.8]
+		},
+		{
+			"name":"bicycle",
+			"type":"PREFAB",
+			"filename":"prefabs/3d_road_bike/scene.gltf",
+			"position":[48.5,38.424,-307.863],
+			"angle":180.351,
+			"angle_x": 25.7,
+			"angle_y": 0.927,
+			"scale":[8.2,8.2,8.2]
+		},
+		{
+			"name":"lamp",
+			"type":"PREFAB",
+			"filename":"prefabs/wall_lamp/scene.gltf",
+			"position":[163.8,107.525,-273.4],
+			"angle":97,
+			"scale":[15.5,15.5,15.5]
+		},
+		
+		{
+			"name":"spot",
+			"type":"LIGHT",
+			"position":[12.4,31,2.3],
+			"angle": 141,
+			"color":[1,0.9,0.8],
+			"intensity":6.6,
+			"max_dist":1000,
+			"cone_angle":80,
+			"cone_exp":7.3,
+			"light_type":"SPOT",
+			"cast_shadows": true,
+			"shadow_bias": 0.001
+		},
+		{
+			"name":"spot2",
+			"type":"LIGHT",
+			"position":[-24.8,31,155.5],
+			"angle": 50.22,
+			"color":[1,0.9,0.8],
+			"intensity":7.3,
+			"max_dist":1000,
+			"cone_angle":35.1,
+			"cone_exp":23,
+			"light_type":"SPOT",
+			"cast_shadows": true,
+			"shadow_bias": 0.001
+		},
+		{
+			"name":"pointlight",
+			"type":"LIGHT",
+			"position":[-187,38,-156],
+			"angle": 0,
+			"color":[1,0.2,0.1],
+			"intensity":2.5,
+			"max_dist":70,
+			"light_type":"POINT"
+		},
+		{
+			"name":"pointlight2",
+			"type":"LIGHT",
+			"position":[-131,38,-205],
+			"angle": 0,
+			"color":[1,0.2,0.1],
+			"intensity":2.5,
+			"max_dist":70,
+			"light_type":"POINT"
+		},
+		{
+			"name":"pointlight3",
+			"type":"LIGHT",
+			"position":[-193.7,34.9,316.7],
+			"angle": 0,
+			"color":[1,0.2,0.1],
+			"intensity":2.5,
+			"max_dist":70,
+			"light_type":"POINT"
+		},
+		{
+			"name":"pointlight4",
+			"type":"LIGHT",
+			"position":[-137.8,34.9,364.1],
+			"angle": 0,
+			"color":[1,0.2,0.1],
+			"intensity":2.5,
+			"max_dist":70,
+			"light_type":"POINT"
+		},
+		{
+			"name":"pointlight5",
+			"type":"LIGHT",
+			"position":[162.7,105.9,-273.2],
+			"angle": 0,
+			"color":[1,0.81,0.4],
+			"intensity":3.6,
+			"max_dist":337,
+			"light_type":"POINT"
+		},
+		{
+			"name":"moonlight",
+			"type":"LIGHT",
+			"position":[150,300,50],
+			"target":[-80,0,-50],
+			"color":[0.1,0.2,0.4],
+			"intensity":1.2,
+			"area_size":1500,
+			"max_dist":1000,
+			"cast_shadows": true,
+			"light_type":"DIRECTIONAL",
+			"shadow_bias": 0.001
+		}	
+	]
+}
