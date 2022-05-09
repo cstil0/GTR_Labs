@@ -285,12 +285,6 @@ void Renderer::renderScene(GTR::Scene* scene, Camera* camera)
 
 // To render the scene according to the rendercalls vector
 void Renderer::renderScene_RenderCalls(GTR::Scene* scene, Camera* camera) {
-	//set the clear color (the background color)
-	glClearColor(scene->background_color.x, scene->background_color.y, scene->background_color.z, 1.0);
-
-	// Clear the color and the depth buffer
-	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-	checkGLErrors();
 
 	// Create the lights vector
 	lights.clear();
@@ -494,6 +488,10 @@ void GTR::Renderer::renderMeshWithMaterialToGBuffers(const Matrix44 model, Mesh*
 	//else if (scene->typeOfRender == Scene::eRenderPipeline::MULTIPASS) {
 	//	setMultipassParameters(material, shader, mesh);
 	//}
+
+	//do the draw call that renders the mesh into the screen
+	mesh->render(GL_TRIANGLES);
+
 	//disable shader
 	shader->disable();
 
@@ -786,6 +784,15 @@ void Renderer::renderFlatMesh(const Matrix44 model, Mesh* mesh, GTR::Material* m
 
 void GTR::Renderer::renderForward(Camera* camera)
 {
+	Scene* scene = Scene::instance;
+	// Delete everything only in forward
+	//set the clear color (the background color)
+	glClearColor(scene->background_color.x, scene->background_color.y, scene->background_color.z, 1.0);
+
+	// Clear the color and the depth buffer
+	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+	checkGLErrors();
+
 	//render rendercalls
 	for (int i = 0; i < render_calls.size(); ++i) {
 		// Instead of rendering the entities vector, render the render_calls vector
@@ -802,6 +809,7 @@ void GTR::Renderer::renderForward(Camera* camera)
 
 void GTR::Renderer::renderDeferred(Camera* camera)
 {
+	Scene* scene = Scene::instance;
 	int width = Application::instance->window_width;
 	int height = Application::instance->window_height;
 
@@ -815,20 +823,29 @@ void GTR::Renderer::renderDeferred(Camera* camera)
 			GL_RGBA, 		//four channels
 			GL_UNSIGNED_BYTE, //1 byte
 			true);		//add depth_texture
+	}
 
-		// render in gbuffer
-		for (int i = 0; i < render_calls.size(); ++i) {
-			// Instead of rendering the entities vector, render the render_calls vector
-			RenderCall rc = render_calls[i];
+	gbuffers_fbo->bind();
 
-			// if rendercall has mesh and material, render it
-			if (rc.mesh && rc.material) {
-				// test if node inside the frustum of the camera
-				if (camera->testBoxInFrustum(rc.world_bounding.center, rc.world_bounding.halfsize))
-					renderMeshWithMaterialToGBuffers(rc.model, rc.mesh, rc.material, camera);
-			}
+	glClearColor(scene->background_color.x, scene->background_color.y, scene->background_color.z, 1.0);
+	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+
+	// render in gbuffer
+	for (int i = 0; i < render_calls.size(); ++i) {
+		// Instead of rendering the entities vector, render the render_calls vector
+		RenderCall rc = render_calls[i];
+
+		// if rendercall has mesh and material, render it
+		if (rc.mesh && rc.material) {
+			// test if node inside the frustum of the camera
+			if (camera->testBoxInFrustum(rc.world_bounding.center, rc.world_bounding.halfsize))
+				renderMeshWithMaterialToGBuffers(rc.model, rc.mesh, rc.material, camera);
 		}
 	}
+	gbuffers_fbo->unbind();
+
+	// draw one of the created textures
+	gbuffers_fbo->color_textures[1]->toViewport();
 
 }
 

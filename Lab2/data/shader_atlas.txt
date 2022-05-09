@@ -571,7 +571,6 @@ void main()
 		computeL_directional(LightComp);
 	}
 
-	//if (LightComp.light_dist <= u_light_max_distance){
 	computeNdotL(LightComp);
 
 	if (u_light_cast_shadows == 1){
@@ -579,7 +578,6 @@ void main()
 	}
 	computeAttenuation(LightComp);
 	light += u_light_color * LightComp.NdotL * LightComp.att_factor * LightComp.spot_factor * LightComp.shadow_factor;
-	//}
 
 	// Apply other textures
 	// Emissive
@@ -610,7 +608,114 @@ void main()
 
 	FragColor = color;
 }
- 
+
+// -----------------------------------------------------------
+\gbuffers.fs
+
+#version 330 core
+
+in vec3 v_position;
+in vec3 v_world_position;
+in vec3 v_normal;
+in vec2 v_uv;
+in vec4 v_color;
+
+uniform vec3 u_camera_position;
+uniform vec4 u_color;
+uniform float u_time;
+uniform float u_alpha_cutoff;
+
+uniform sampler2D u_texture;
+uniform int u_normal_text_bool;
+uniform sampler2D u_normal_texture;
+uniform sampler2D u_emissive_texture;
+uniform sampler2D u_occlusion_texture;
+uniform sampler2D u_met_rough_texture;
+uniform int u_texture2show;
+
+// gbuffers out
+layout(location = 0) out vec4 GB0;
+layout(location = 1) out vec4 GB1;
+layout(location = 2) out vec4 GB2;
+
+
+// --- Functions ---
+mat3 cotangent_frame(vec3 N, vec3 p, vec2 uv)
+{
+	// get edge vectors of the pixel triangle
+	vec3 dp1 = dFdx( p );
+	vec3 dp2 = dFdy( p );
+	vec2 duv1 = dFdx( uv );
+	vec2 duv2 = dFdy( uv );
+	// solve the linear system
+	vec3 dp2perp = cross( dp2, N );
+	vec3 dp1perp = cross( N, dp1 );
+	vec3 T = dp2perp * duv1.x + dp1perp * duv2.x;
+	vec3 B = dp2perp * duv1.y + dp1perp * duv2.y;
+	// construct a scale-invariant frame 
+	float invmax = inversesqrt( max( dot(T,T), dot(B,B) ) );
+	return mat3( T * invmax, B * invmax, N );
+}
+
+vec3 perturbNormal(vec3 N, vec3 WP, vec2 uv, vec3 normal_pixel)
+{
+	normal_pixel = normal_pixel * 255./127. - 128./127.;
+	mat3 TBN = cotangent_frame(N, WP, uv);
+	return normalize(TBN * normal_pixel);
+}
+
+void main()
+{
+	vec2 uv = v_uv;
+	vec4 color = u_color;
+	color *= texture( u_texture, v_uv );
+
+	if(color.a < u_alpha_cutoff)
+		discard;
+
+	vec3 N;
+	vec3 V = normalize(u_camera_position - v_world_position);
+	vec3 normal_pixel = texture2D( u_normal_texture, v_uv ).xyz; 
+	vec3 v_N = normalize(v_normal);
+	// if there is a normal texture, compute the normal according to it
+	if (u_normal_text_bool == 1)
+		N = perturbNormal(v_N, V, v_uv, normal_pixel);
+	else
+		N = v_N;
+
+
+	// Apply other textures
+	// Emissive
+	//light += texture( u_emissive_texture, v_uv ).xyz;
+
+	// Occlusion
+	// x coord has occlusion map
+	//light *= texture( u_met_rough_texture, v_uv ).x;
+	// Occlusion can be either in the met_rou or occlusion texture
+	//light *= texture( u_occlusion_texture, v_uv ).x;
+
+	// Debug textures
+	// Normal
+	//if (u_texture2show == 1){
+	//	color.xyz = LightComp.N;
+	//}
+
+	// Occlusion
+	//if(u_texture2show == 2){
+	//	color.xyz = vec3(texture( u_met_rough_texture, v_uv ).x);
+	//	color.xyz *= texture(u_occlusion_texture, v_uv).x;
+	//}
+	// Emissive
+	//if(u_texture2show == 3)
+	//	color.xyz = texture(u_emissive_texture, v_uv).xyz;
+
+	// don't need to save the alpha
+	GB0 = vec4(color.xyz, 1.0);
+	GB1 = vec4(N, 1.0);
+	GB2 = vec4(v_world_position, 1.0);
+
+}
+
 //------------------------------------------------------------
 \multi.fs
 
