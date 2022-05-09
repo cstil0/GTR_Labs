@@ -94,6 +94,7 @@ namespace GTR {
 	class Scene
 	{
 	public:
+		// CREO QUE ESTO ESTARIA MAS BONITO EN RENDERER... NO SE QUE HACE AQUÍ
 		enum eRenderPipeline {
 			SINGLEPASS,
 			MULTIPASS

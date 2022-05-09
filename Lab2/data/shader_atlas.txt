@@ -3,6 +3,7 @@ flat basic.vs flat.fs
 texture basic.vs texture.fs
 multi_pass basic.vs light_multi_pass.fs
 single_pass basic.vs light_single_pass.fs
+gbuffers basic.vs gbuffers.fs
 depth quad.vs depth.fs
 multi basic.vs multi.fs
 //------------------------------------------------------------------

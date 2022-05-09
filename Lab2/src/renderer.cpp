@@ -29,6 +29,7 @@ GTR::Renderer::Renderer()
 	shadowmap = NULL;
 	max_lights = 10;
 
+	gbuffers_fbo = NULL;
 	pipeline = FORWARD;
 }
 
@@ -103,35 +104,80 @@ void GTR::Renderer::sortRenderCalls() {
 // generate the shadowmap given a light
 void GTR::Renderer::generateShadowmap(LightEntity* light)
 {
-	// only spot and directional lights cast shadows
-	if (light->light_type != LightEntity::eTypeOfLight::SPOT && light->light_type != LightEntity::eTypeOfLight::DIRECTIONAL)
-		return;
-	if (!light->cast_shadows) {
-		// if a created light is no longer casts shadows delete it
-		if (light->fbo) {
-			delete light->fbo;
-			light->fbo = NULL;
-			light->shadowmap = NULL;
+	Camera* view_camera;
+	if (Scene::instance->typeOfRender == Scene::eRenderPipeline::MULTIPASS) {
+		// only spot and directional lights cast shadows
+		if (light->light_type != LightEntity::eTypeOfLight::SPOT && light->light_type != LightEntity::eTypeOfLight::DIRECTIONAL)
+			return;
+		if (!light->cast_shadows) {
+			// if a created light is no longer casts shadows delete it
+			if (light->fbo) {
+				delete light->fbo;
+				light->fbo = NULL;
+				light->shadowmap = NULL;
+			}
+			return;
 		}
-		return;
+
+		if (!light->fbo) {
+			light->shadowmap = new Texture();
+			light->fbo = new FBO();
+			// We only need to store the depth buffer
+			light->fbo->setDepthOnly(2048, 2048);
+			// take the texture from the fbo and store it in another variable
+			light->shadowmap = light->fbo->depth_texture;
+		}
+		// Create a new camera from light
+		if (!light->light_camera)
+			light->light_camera = new Camera();
+
+		// Guardamos la camara anterior para no perderla
+		view_camera = Camera::current;
+		// activate fbo to start painting in it and not in the screen
+		light->fbo->bind();
 	}
 
-	if (!light->fbo) {
-		light->shadowmap = new Texture();
-		light->fbo = new FBO();
-		// We only need to store the depth buffer
-		light->fbo->setDepthOnly(2048, 2048);
-		// take the texture from the fbo and store it in another variable
-		light->shadowmap = light->fbo->depth_texture;
-	}
-	// Create a new camera from light
-	if (!light->light_camera)
-		light->light_camera = new Camera();
+	// SI ES SINGLE PASS GUARDAMOS EN EL ATLAS GENERAL
+	else if (Scene::instance->typeOfRender == Scene::eRenderPipeline::SINGLEPASS) {
+		// only spot and directional lights cast shadows
+		if (light->light_type != LightEntity::eTypeOfLight::SPOT && light->light_type != LightEntity::eTypeOfLight::DIRECTIONAL)
+			return;
+		if (!light->cast_shadows) {
+			// if a created light is no longer casts shadows delete it
+			if (fbo) {
+				delete fbo;
+				fbo = NULL;
+				shadowmap = NULL;
+			}
+			return;
+		}
 
-	// Guardamos la camara anterior para no perderla
-	Camera* view_camera = Camera::current;
-	// activate fbo to start painting in it and not in the screen
-	light->fbo->bind();
+		if (!fbo) {
+			shadowmap = new Texture();
+			fbo = new FBO();
+			// We only need to store the depth buffer
+			fbo->setDepthOnly(2048, 2048);
+			// take the texture from the fbo and store it in another variable
+			shadowmap = light->fbo->depth_texture;
+		}
+		// Create a new camera from light
+		if (!light->light_camera)
+			light->light_camera = new Camera();
+
+		// Guardamos la camara anterior para no perderla
+		view_camera = Camera::current;
+		// activate fbo to start painting in it and not in the screen
+		fbo->bind();
+		if (light->light_type == LightEntity::eTypeOfLight::SPOT) {
+			glViewport(0, 0, 1024, 1024);
+		}
+		else if (light->light_type == LightEntity::eTypeOfLight::DIRECTIONAL) {
+			glViewport(1024, 0, 1024, 1024);
+			//glViewport(0, 0, 1024, 1024);
+
+		}
+	}
+
 	Camera* light_camera = light->light_camera;
 
 	if (light->light_type == LightEntity::eTypeOfLight::SPOT) {
@@ -169,8 +215,18 @@ void GTR::Renderer::generateShadowmap(LightEntity* light)
 		}
 	}
 
+	if (Scene::instance->typeOfRender == Scene::eRenderPipeline::MULTIPASS) {
+		// go back to default system
+		light->fbo->unbind();
+	}
+	else if (Scene::instance->typeOfRender == Scene::eRenderPipeline::SINGLEPASS) {
+
+		glViewport(0,0,Application::instance->window_width, Application::instance->window_height);
+		fbo->unbind();
+	}
+
 	// go back to default system
-	light->fbo->unbind();
+	//light->fbo->unbind();
 	view_camera->enable();
 }
 
@@ -184,7 +240,14 @@ void Renderer::showShadowmap(LightEntity* light) {
 	// set uniforms to delinearize shadowmap texture
 	depth_shader->setUniform("u_camera_nearfar", Vector2(light->light_camera->near_plane, light->light_camera->far_plane));
 	glViewport(0, 0, 256, 256);
-	light->shadowmap->toViewport(depth_shader);
+	if (Scene::instance->typeOfRender == Scene::eRenderPipeline::MULTIPASS) {
+		light->shadowmap->toViewport(depth_shader);
+	}
+	else if (Scene::instance->typeOfRender == Scene::eRenderPipeline::SINGLEPASS) {
+		shadowmap->toViewport(depth_shader);
+	}
+
+	// return to default
 	glViewport(0, 0, Application::instance->window_width, Application::instance->window_height);
 	glEnable(GL_DEPTH_TEST);
 }
@@ -373,6 +436,71 @@ void Renderer::renderMeshWithMaterial(const Matrix44 model, Mesh* mesh, GTR::Mat
 	//set the render state as it was before to avoid problems with future renders
 	glDisable(GL_BLEND);
 	glDepthFunc(GL_LESS);
+}
+
+void GTR::Renderer::renderMeshWithMaterialToGBuffers(const Matrix44 model, Mesh* mesh, GTR::Material* material, Camera* camera)
+{
+	//in case there is nothing to do
+	if (!mesh || !mesh->getNumVertices() || !material)
+		return;
+	assert(glGetError() == GL_NO_ERROR);
+
+	if (material->alpha_mode == eAlphaMode::BLEND)
+		return;
+
+	Shader* shader = NULL;
+
+	//select if render both sides of the triangles
+	if (material->two_sided)
+		glDisable(GL_CULL_FACE);
+	else
+		glEnable(GL_CULL_FACE);
+	assert(glGetError() == GL_NO_ERROR);
+
+	//chose a shader
+	Scene* scene = Scene::instance;
+	//if (scene->typeOfRender == Scene::eRenderPipeline::SINGLEPASS)
+	//	shader = Shader::Get("single_pass");
+	//else if (scene->typeOfRender == Scene::eRenderPipeline::MULTIPASS)
+	//	shader = Shader::Get("multi_pass");
+
+	shader = Shader::Get("gbuffers");
+
+	assert(glGetError() == GL_NO_ERROR);
+
+	//no shader? then nothing to render
+	if (!shader)
+		return;
+	shader->enable();
+
+	//upload uniforms
+	shader->setUniform("u_viewprojection", camera->viewprojection_matrix);
+	shader->setUniform("u_camera_position", camera->eye);
+	shader->setUniform("u_model", model);
+	float t = getTime();
+	shader->setUniform("u_time", t);
+
+	shader->setUniform("u_color", material->color);
+	// pass textures to the shader
+	setTextures(material, shader);
+
+	//this is used to say which is the alpha threshold to what we should not paint a pixel on the screen (to cut polygons according to texture alpha)
+	shader->setUniform("u_alpha_cutoff", material->alpha_mode == GTR::eAlphaMode::MASK ? material->alpha_cutoff : 0);
+
+	//// pass light parameters
+	//if (scene->typeOfRender == Scene::eRenderPipeline::SINGLEPASS) {
+	//	setSinglepass_parameters(material, shader, mesh);
+	//}
+	//else if (scene->typeOfRender == Scene::eRenderPipeline::MULTIPASS) {
+	//	setMultipassParameters(material, shader, mesh);
+	//}
+	//disable shader
+	shader->disable();
+
+	//set the render state as it was before to avoid problems with future renders
+	glDisable(GL_BLEND);
+	glDepthFunc(GL_LESS);
+
 }
 
 // to pass the textures to the shader
@@ -674,6 +802,33 @@ void GTR::Renderer::renderForward(Camera* camera)
 
 void GTR::Renderer::renderDeferred(Camera* camera)
 {
+	int width = Application::instance->window_width;
+	int height = Application::instance->window_height;
+
+	if (!gbuffers_fbo) {
+		//create and FBO
+		gbuffers_fbo = new FBO();
+
+		//create 3 textures of 4 components
+		gbuffers_fbo->create(width, height,
+			3, 			//three textures
+			GL_RGBA, 		//four channels
+			GL_UNSIGNED_BYTE, //1 byte
+			true);		//add depth_texture
+
+		// render in gbuffer
+		for (int i = 0; i < render_calls.size(); ++i) {
+			// Instead of rendering the entities vector, render the render_calls vector
+			RenderCall rc = render_calls[i];
+
+			// if rendercall has mesh and material, render it
+			if (rc.mesh && rc.material) {
+				// test if node inside the frustum of the camera
+				if (camera->testBoxInFrustum(rc.world_bounding.center, rc.world_bounding.halfsize))
+					renderMeshWithMaterialToGBuffers(rc.model, rc.mesh, rc.material, camera);
+			}
+		}
+	}
 
 }
 

@@ -58,6 +58,8 @@ namespace GTR {
 		int debug_shadowmap;
 		int debug_texture;
 
+		FBO* gbuffers_fbo;
+
 
 		Renderer();
 
@@ -83,6 +85,8 @@ namespace GTR {
 		void renderNode(const Matrix44& model, GTR::Node* node, Camera* camera);
 		//to render one mesh given its material and transformation matrix
 		void renderMeshWithMaterial(const Matrix44 model, Mesh* mesh, GTR::Material* material, Camera* camera);
+		void renderMeshWithMaterialToGBuffers(const Matrix44 model, Mesh* mesh, GTR::Material* material, Camera* camera);
+		
 		void setTextures(GTR::Material* material, Shader* shader);
 		void setSinglepass_parameters(GTR::Material* material, Shader* shader, Mesh* mesh);
 		void setMultipassParameters(GTR::Material* material, Shader* shader, Mesh* mesh);
