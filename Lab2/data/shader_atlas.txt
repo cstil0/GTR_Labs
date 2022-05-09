@@ -4,6 +4,7 @@ texture basic.vs texture.fs
 multi_pass basic.vs light_multi_pass.fs
 single_pass basic.vs light_single_pass.fs
 gbuffers basic.vs gbuffers.fs
+deferred basic.vs deferred.fs
 depth quad.vs depth.fs
 multi basic.vs multi.fs
 //------------------------------------------------------------------
@@ -107,6 +108,8 @@ void main()
 	FragColor = color;
 }
 
+// ESTOS SHADERS KILOMETRICOS SON HORRIBLES, HABRÍA QUE HACER LO DE #INCLUDE 
+//PARA REUTILIZAR FUNCIONES DESDE OTRO SHADER
 //------------------------------------------------------------------------------------------------------------------------------
 \light_single_pass.fs
 #version 330 core
@@ -711,10 +714,16 @@ void main()
 
 	// don't need to save the alpha
 	GB0 = vec4(color.xyz, 1.0);
-	GB1 = vec4(N, 1.0);
-	GB2 = vec4(v_world_position, 1.0);
+	// ESTARIA BIEN ARREGLAR ESTO TAMBIÉN EN MULTI Y SINGLE PASS FORWARD
+	// to recover negative values
+	GB1 = vec4(N * 0.5 + vec3(0.5), 1.0);
+	// to make the world position go from 0 to 100 and visualize it better
+	GB2 = vec4(v_world_position * 0.01, 1.0);
 
 }
+
+//------------------------------------------------------------
+\deferred.fs
 
 //------------------------------------------------------------
 \multi.fs

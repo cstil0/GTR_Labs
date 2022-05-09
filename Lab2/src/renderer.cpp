@@ -31,6 +31,7 @@ GTR::Renderer::Renderer()
 
 	gbuffers_fbo = NULL;
 	pipeline = FORWARD;
+	show_buffers = false;
 }
 
 // --- Rendercalls manager functions ---
@@ -252,6 +253,26 @@ void Renderer::showShadowmap(LightEntity* light) {
 	glEnable(GL_DEPTH_TEST);
 }
 
+void Renderer::showGBuffers(int width, int height, Camera* camera) {
+	// ESTO SE PODRÍA USAR QUIZÁ PARA LO DEL SHADOWMAP ATLAS, PRINTAMOS EN UNA TEXTURA Y LA PONEMOS EN EL VIEWPORT
+	glViewport(0, height * 0.5, width * 0.5, height * 0.5);
+	Shader* depth_shader = Shader::getDefaultShader("depth");
+	depth_shader->enable();
+	// set uniforms to delinearize shadowmap texture
+	depth_shader->setUniform("u_camera_nearfar", Vector2(camera->near_plane, camera->far_plane));
+	gbuffers_fbo->depth_texture->toViewport(depth_shader);
+
+	glViewport(width * 0.5, height * 0.5, width * 0.5, height * 0.5);
+	gbuffers_fbo->color_textures[0]->toViewport();
+
+	glViewport(0, 0, width * 0.5, height * 0.5);
+	gbuffers_fbo->color_textures[1]->toViewport();
+
+	glViewport(width * 0.5, 0, width * 0.5, height * 0.5);
+	gbuffers_fbo->color_textures[2]->toViewport();
+
+	glViewport(0,0, width, height);
+}
 
 // --- Render functions ---
 
@@ -842,15 +863,22 @@ void GTR::Renderer::renderDeferred(Camera* camera)
 				renderMeshWithMaterialToGBuffers(rc.model, rc.mesh, rc.material, camera);
 		}
 	}
+
 	gbuffers_fbo->unbind();
 
 	// draw one of the created textures
 	gbuffers_fbo->color_textures[1]->toViewport();
 
+
+	if (show_buffers)
+		showGBuffers(Application::instance->window_width, Application::instance->window_height, camera);
+
 }
 
 void GTR::Renderer::renderInMenu() {
 	ImGui::Checkbox("Show Shadowmap", &show_shadowmap);
+	if (pipeline == ePipeline::DEFERRED)
+		ImGui::Checkbox("Show GBuffers", &show_buffers);
 	ImGui::Combo("Shadowmaps", &debug_shadowmap, "SPOT1\0SPOT2\0POINT1\0POINT2\0POINT3\0POINT4\0POINT5\0DIRECTIONAL");
 	ImGui::Combo("Textures", &debug_texture, "COMPLETE\0NORMAL\0OCCLUSION\0EMISSIVE");
 }

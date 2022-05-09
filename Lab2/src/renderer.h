@@ -59,6 +59,7 @@ namespace GTR {
 		int debug_texture;
 
 		FBO* gbuffers_fbo;
+		bool show_buffers;
 
 
 		Renderer();
@@ -72,6 +73,7 @@ namespace GTR {
 
 		// -- Shadowmap functions --
 		void showShadowmap(LightEntity* light);
+		void showGBuffers(int width, int height, Camera* camera);
 		void generateShadowmap(LightEntity* light);
 
 		// -- Render functions --
