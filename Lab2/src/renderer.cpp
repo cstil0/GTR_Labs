@@ -883,14 +883,18 @@ void GTR::Renderer::renderDeferred(Camera* camera)
 
 	illumination_fbo->bind();
 
+	// NO TESTEAMOS DEPTH POR QUE YA HEMOS RENDERIZADO LAS TEXTURAS CON LAS OCLUSIONES
+	// ADEMÁS LA ILLUMINATION FBO NO TIENE NADA EN DEPTH AHORA
+	glDisable(GL_DEPTH_TEST);
+
 	// UN QUAD ES UNA MESH QUE VA DE -1, 1 A 1,1N ??
 	Mesh* quad = Mesh::getQuad();
 	Shader* shader = Shader::Get("deferred");
 	shader->enable();
 	shader->setUniform("u_ambient_light", scene->ambient_light);
-	shader->setUniform("u_color_texture", gbuffers_fbo->color_textures[0], 0);
-	shader->setUniform("u_normal_texture", gbuffers_fbo->color_textures[1], 1);
-	shader->setUniform("u_extra_texture", gbuffers_fbo->color_textures[2], 2);
+	shader->setUniform("u_gb0_texture", gbuffers_fbo->color_textures[0], 0);
+	shader->setUniform("u_gb1_texture", gbuffers_fbo->color_textures[1], 1);
+	shader->setUniform("u_gb2_texture", gbuffers_fbo->color_textures[2], 2);
 	shader->setUniform("u_depth_texture", gbuffers_fbo->color_textures[3], 3);
 
 	//pass the inverse projection of the camera to reconstruct world pos.
@@ -921,6 +925,8 @@ void GTR::Renderer::renderDeferred(Camera* camera)
 			glBlendFunc(GL_SRC_ALPHA, GL_ONE);
 			glEnable(GL_BLEND);
 		}
+
+		uploadLightToShader(light, shader);
 
 		quad->render(GL_BLEND);
 
