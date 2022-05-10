@@ -100,8 +100,8 @@ namespace GTR {
 		void renderForward(Camera* camera);
 		void renderDeferred(Camera* camera);
 		void renderInMenu();
+
 	};
 
 	Texture* CubemapFromHDRE(const char* filename);
-
 };

@@ -845,6 +845,7 @@ void GTR::Renderer::renderDeferred(Camera* camera)
 	if (!gbuffers_fbo) {
 		//create and FBO
 		gbuffers_fbo = new FBO();
+		illumination_fbo = new FBO();
 
 		//create 3 textures of 4 components
 		gbuffers_fbo->create(width, height,
@@ -912,6 +913,8 @@ void GTR::Renderer::renderDeferred(Camera* camera)
 	//	quad->render(GL_TRIANGLES);
 	//}
 
+	Vector3 temp_ambient = scene->ambient_light;
+
 	for (int i = 0; i < lights.size(); i++) {
 		bool any_visible = false;
 		LightEntity* light = lights[i];
@@ -926,7 +929,7 @@ void GTR::Renderer::renderDeferred(Camera* camera)
 			glEnable(GL_BLEND);
 		}
 
-		uploadLightToShader(light, shader);
+		uploadLightToShader(light, shader, temp_ambient);
 
 		quad->render(GL_BLEND);
 
@@ -934,11 +937,13 @@ void GTR::Renderer::renderDeferred(Camera* camera)
 			shader->setUniform("u_light_color", Vector3());
 			quad->render(GL_TRIANGLES);
 		}
+
+		temp_ambient = Vector3(0.0, 0.0, 0.0);  // CAMBIAR AMBIENT DESPUÉS DE LA PRIMERA ITERACIÓN
 	}
 
 	illumination_fbo->unbind();
 	illumination_fbo->color_textures[0]->toViewport();
-
+	
 
 	if (show_buffers)
 		showGBuffers(Application::instance->window_width, Application::instance->window_height, camera);
