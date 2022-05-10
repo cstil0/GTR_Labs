@@ -252,6 +252,27 @@ void Renderer::showShadowmap(LightEntity* light) {
 	glEnable(GL_DEPTH_TEST);
 }
 
+void Renderer::showGBuffers(int width, int height, Camera* camera) {
+	// ESTO SE PODRÃA USAR QUIZÃ PARA LO DEL SHADOWMAP ATLAS, PRINTAMOS EN UNA TEXTURA Y LA PONEMOS EN EL VIEWPORT
+	glViewport(0, height * 0.5, width * 0.5, height * 0.5);
+	Shader* depth_shader = Shader::getDefaultShader("depth");
+	depth_shader->enable();
+	// set uniforms to delinearize shadowmap texture
+	depth_shader->setUniform("u_camera_nearfar", Vector2(camera->near_plane, camera->far_plane));
+	gbuffers_fbo->depth_texture->toViewport(depth_shader);
+
+	glViewport(width * 0.5, height * 0.5, width * 0.5, height * 0.5);
+	gbuffers_fbo->color_textures[0]->toViewport();
+
+	glViewport(0, 0, width * 0.5, height * 0.5);
+	gbuffers_fbo->color_textures[1]->toViewport();
+
+	glViewport(width * 0.5, 0, width * 0.5, height * 0.5);
+	gbuffers_fbo->color_textures[2]->toViewport();
+
+	glViewport(0,0, width, height);
+	glEnable(GL_DEPTH_TEST);
+}
 
 // --- Render functions ---
 
@@ -303,7 +324,7 @@ void Renderer::renderScene_RenderCalls(GTR::Scene* scene, Camera* camera) {
 	}
 
 	// Generate shadowmaps
-	// SI LA LUZ NO ESTÁ DENTRO DE LA CÁMARA QUE NO SE GENERE EL SHADOWMAP
+	// SI LA LUZ NO ESTï¿½ DENTRO DE LA Cï¿½MARA QUE NO SE GENERE EL SHADOWMAP
 	// PARA SINGLE PASS HAY QUE CREAR EL SHADOWAP CON UN ATLAS Y USANDO VIEWPORT
 	for (int i = 0; i < lights.size(); i++) {
 		LightEntity* light = lights[i];
@@ -338,6 +359,7 @@ void Renderer::renderScene_RenderCalls(GTR::Scene* scene, Camera* camera) {
 	// show shadowmap if activated
 	if (show_shadowmap)
 		showShadowmap(lights[debug_shadowmap]);
+
 }
 
 //renders all the prefab
@@ -802,6 +824,14 @@ void GTR::Renderer::renderForward(Camera* camera)
 
 void GTR::Renderer::renderDeferred(Camera* camera)
 {
+	Scene* scene = Scene::instance;
+
+	glClearColor(scene->background_color.x, scene->background_color.y, scene->background_color.z, 1.0);
+
+	// Clear the color and the depth buffer
+	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+	checkGLErrors();
+
 	int width = Application::instance->window_width;
 	int height = Application::instance->window_height;
 
@@ -816,20 +846,103 @@ void GTR::Renderer::renderDeferred(Camera* camera)
 			GL_UNSIGNED_BYTE, //1 byte
 			true);		//add depth_texture
 
-		// render in gbuffer
-		for (int i = 0; i < render_calls.size(); ++i) {
-			// Instead of rendering the entities vector, render the render_calls vector
-			RenderCall rc = render_calls[i];
+		// fbo to compute the illumination for each pixel
+		illumination_fbo->create(width, height,
+			1, 			//three textures
+			GL_RGBA, 		//four channels
+			GL_UNSIGNED_BYTE, //1 byte
+			true);		//add depth_texture
+	}
 
-			// if rendercall has mesh and material, render it
-			if (rc.mesh && rc.material) {
-				// test if node inside the frustum of the camera
-				if (camera->testBoxInFrustum(rc.world_bounding.center, rc.world_bounding.halfsize))
-					renderMeshWithMaterialToGBuffers(rc.model, rc.mesh, rc.material, camera);
-			}
+	gbuffers_fbo->bind();
+
+	glClearColor(scene->background_color.x, scene->background_color.y, scene->background_color.z, 1.0);
+	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+
+	// render in gbuffer
+	for (int i = 0; i < render_calls.size(); ++i) {
+		// Instead of rendering the entities vector, render the render_calls vector
+		RenderCall rc = render_calls[i];
+
+		// if rendercall has mesh and material, render it
+		if (rc.mesh && rc.material) {
+			// test if node inside the frustum of the camera
+			if (camera->testBoxInFrustum(rc.world_bounding.center, rc.world_bounding.halfsize))
+				renderMeshWithMaterialToGBuffers(rc.model, rc.mesh, rc.material, camera);
 		}
 	}
 
+	gbuffers_fbo->unbind();
+
+	illumination_fbo->bind();
+
+	// NO TESTEAMOS DEPTH POR QUE YA HEMOS RENDERIZADO LAS TEXTURAS CON LAS OCLUSIONES
+	// ADEMï¿½S LA ILLUMINATION FBO NO TIENE NADA EN DEPTH AHORA
+	glDisable(GL_DEPTH_TEST);
+
+	// UN QUAD ES UNA MESH QUE VA DE -1, 1 A 1,1N ??
+	Mesh* quad = Mesh::getQuad();
+	Mesh* sphere = Mesh::Get("data/sphere.obj", false, false);
+	Shader* shader = Shader::Get("deferred");  // si utilizamos el sphere tenemos que tener en cuenta la view projection
+											   // y la model para ubicar correctamente la esfera
+											   // coger de radio el max_distance
+	shader->enable();
+	shader->setUniform("u_ambient_light", scene->ambient_light);
+	shader->setUniform("u_gb0_texture", gbuffers_fbo->color_textures[0], 0);
+	shader->setUniform("u_gb1_texture", gbuffers_fbo->color_textures[1], 1);
+	shader->setUniform("u_gb2_texture", gbuffers_fbo->color_textures[2], 2);
+	shader->setUniform("u_depth_texture", gbuffers_fbo->depth_texture, 3);
+
+	//pass the inverse projection of the camera to reconstruct world pos.
+	Matrix44 inv_vp = camera->viewprojection_matrix;
+	inv_vp.inverse();
+	shader->setUniform("u_inverse_viewprojection", inv_vp);
+	//pass the inverse window resolution, this may be useful
+	shader->setUniform("u_iRes", Vector2(1.0 / (float)width, 1.0 / (float)height));
+
+
+	// draw a quad for each light
+	// ESTO AHORA MISMO NO ESTï¿½ IMPLEMENTADO ASI
+	//if(!lights.size()){
+	//	shader->setUniform("u_light_color", Vector3());
+	//	quad->render(GL_TRIANGLES);
+	//}
+
+	Vector3 temp_ambient = scene->ambient_light;
+
+	for (int i = 0; i < lights.size(); i++) {
+		bool any_visible = false;
+		LightEntity* light = lights[i];
+		if (light->visible)
+			any_visible = true;
+		
+		if (i == 0) {
+			glDisable(GL_BLEND);
+		}
+		else {
+			glBlendFunc(GL_SRC_ALPHA, GL_ONE);
+			glEnable(GL_BLEND);
+		}
+
+		uploadLightToShader(light, shader, temp_ambient);
+
+		quad->render(GL_TRIANGLES);
+
+		if (!any_visible) {
+			shader->setUniform("u_light_color", Vector3());
+			quad->render(GL_TRIANGLES);
+		}
+	}
+
+	illumination_fbo->unbind();
+	glDisable(GL_BLEND);
+	illumination_fbo->color_textures[0]->toViewport();
+	
+
+	if (show_buffers)
+		showGBuffers(Application::instance->window_width, Application::instance->window_height, camera);
+
+	glEnable(GL_DEPTH_TEST);
 }
 
 void GTR::Renderer::renderInMenu() {
