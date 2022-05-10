@@ -50,6 +50,7 @@ namespace GTR {
 		int max_lights;
 
 		FBO* fbo;
+		FBO* illumination_fbo;
 		Texture* shadowmap;
 		ePipeline pipeline;
 
@@ -59,6 +60,7 @@ namespace GTR {
 		int debug_texture;
 
 		FBO* gbuffers_fbo;
+		bool show_buffers;
 
 
 		Renderer();
@@ -72,6 +74,7 @@ namespace GTR {
 
 		// -- Shadowmap functions --
 		void showShadowmap(LightEntity* light);
+		void showGBuffers(int width, int height, Camera* camera);
 		void generateShadowmap(LightEntity* light);
 
 		// -- Render functions --
@@ -90,6 +93,7 @@ namespace GTR {
 		void setTextures(GTR::Material* material, Shader* shader);
 		void setSinglepass_parameters(GTR::Material* material, Shader* shader, Mesh* mesh);
 		void setMultipassParameters(GTR::Material* material, Shader* shader, Mesh* mesh);
+		void uploadLightToShader(GTR::LightEntity* light, Shader* shader, Vector3 ambient_light);
 		// to render flat objects for generating the shadowmaps
 		void renderFlatMesh(const Matrix44 model, Mesh* mesh, GTR::Material* material, Camera* camera);
 
