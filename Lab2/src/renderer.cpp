@@ -838,6 +838,7 @@ void GTR::Renderer::renderDeferred(Camera* camera)
 	if (!gbuffers_fbo) {
 		//create and FBO
 		gbuffers_fbo = new FBO();
+		illumination_fbo = new FBO();
 
 		//create 3 textures of 4 components
 		gbuffers_fbo->create(width, height,

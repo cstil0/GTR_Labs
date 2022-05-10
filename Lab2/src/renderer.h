@@ -59,6 +59,7 @@ namespace GTR {
 		int debug_texture;
 
 		FBO* gbuffers_fbo;
+		FBO* illumination_fbo;
 
 
 		Renderer();
@@ -92,7 +93,7 @@ namespace GTR {
 		void setMultipassParameters(GTR::Material* material, Shader* shader, Mesh* mesh);
 		// to render flat objects for generating the shadowmaps
 		void renderFlatMesh(const Matrix44 model, Mesh* mesh, GTR::Material* material, Camera* camera);
-
+		void showGBuffers(int width, int height, Camera* camera);
 		void renderForward(Camera* camera);
 		void renderDeferred(Camera* camera);
 		void renderInMenu();
