@@ -255,22 +255,37 @@ void Renderer::showShadowmap(LightEntity* light) {
 }
 
 void Renderer::showGBuffers(int width, int height, Camera* camera) {
+	// to avoid seeing the scene
+	glClearColor(0.0, 0.0, 0.0, 1.0);
+	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+
 	// ESTO SE PODRÍA USAR QUIZÁ PARA LO DEL SHADOWMAP ATLAS, PRINTAMOS EN UNA TEXTURA Y LA PONEMOS EN EL VIEWPORT
-	glViewport(0, height * 0.5, width * 0.5, height * 0.5);
+	// ESTARIA BIEN LIMPAR UN POCO ESTOS NUMERITOS
+	// two textures
+	float fst_row_size = 0.5;
+	// three textures
+	float snd_row_size = 0.33;
+	float snd_row_pos = 1 - (fst_row_size + snd_row_size);
+
+	glViewport(0, height * fst_row_size, width * fst_row_size, height * fst_row_size);
 	Shader* depth_shader = Shader::getDefaultShader("depth");
 	depth_shader->enable();
 	// set uniforms to delinearize shadowmap texture
 	depth_shader->setUniform("u_camera_nearfar", Vector2(camera->near_plane, camera->far_plane));
 	gbuffers_fbo->depth_texture->toViewport(depth_shader);
 
-	glViewport(width * 0.5, height * 0.5, width * 0.5, height * 0.5);
+	glViewport(width * fst_row_size, height * fst_row_size, width * fst_row_size, height * fst_row_size);
 	gbuffers_fbo->color_textures[0]->toViewport();
 
-	glViewport(0, 0, width * 0.5, height * 0.5);
+
+	glViewport(0, height*snd_row_pos, width * snd_row_size, height * snd_row_size);
 	gbuffers_fbo->color_textures[1]->toViewport();
 
-	glViewport(width * 0.5, 0, width * 0.5, height * 0.5);
+	glViewport(width * snd_row_size, height*snd_row_pos, width * snd_row_size, height * snd_row_size);
 	gbuffers_fbo->color_textures[2]->toViewport();
+
+	glViewport(width * (1-snd_row_size), height*snd_row_pos, width * snd_row_size, height * snd_row_size);
+	gbuffers_fbo->color_textures[3]->toViewport();
 
 	glViewport(0,0, width, height);
 	glEnable(GL_DEPTH_TEST);
@@ -321,7 +336,8 @@ void Renderer::renderScene_RenderCalls(GTR::Scene* scene, Camera* camera) {
 		BaseEntity* ent = scene->entities[i];
 		if (ent->entity_type == GTR::eEntityType::LIGHT) {
 			LightEntity* light = (LightEntity*)ent;
-			lights.push_back(light);
+			if (light->visible)
+				lights.push_back(light);
 		}
 	}
 
@@ -612,7 +628,7 @@ void GTR::Renderer::renderDeferred(Camera* camera)
 
 		//create 3 textures of 4 components
 		gbuffers_fbo->create(width, height,
-			3, 			//three textures
+			4, 			//three textures
 			GL_RGBA, 		//four channels
 			GL_UNSIGNED_BYTE, //1 byte
 			true);		//add depth_texture
@@ -653,7 +669,8 @@ void GTR::Renderer::renderDeferred(Camera* camera)
 
 	// UN QUAD ES UNA MESH QUE VA DE -1, 1 A 1,1N ??
 	Mesh* quad = Mesh::getQuad();
-	//Mesh* sphere = Mesh::Get("data/sphere.obj", false, false);
+	// GUARDAMOS ESTO EN UNA VARIABLE?
+	Mesh* sphere = Mesh::Get("data/meshes/sphere.obj", false, false);
 	Shader* shader = Shader::Get("deferred");  // si utilizamos el sphere tenemos que tener en cuenta la view projection
 											   // y la model para ubicar correctamente la esfera
 											   // coger de radio el max_distance
@@ -662,7 +679,8 @@ void GTR::Renderer::renderDeferred(Camera* camera)
 	shader->setUniform("u_gb0_texture", gbuffers_fbo->color_textures[0], 0);
 	shader->setUniform("u_gb1_texture", gbuffers_fbo->color_textures[1], 1);
 	shader->setUniform("u_gb2_texture", gbuffers_fbo->color_textures[2], 2);
-	shader->setUniform("u_depth_texture", gbuffers_fbo->depth_texture, 3);
+	shader->setUniform("u_gb3_texture", gbuffers_fbo->color_textures[3], 3);
+	shader->setUniform("u_depth_texture", gbuffers_fbo->depth_texture, 4);
 
 	//pass the inverse projection of the camera to reconstruct world pos.
 	Matrix44 inv_vp = camera->viewprojection_matrix;
@@ -681,11 +699,14 @@ void GTR::Renderer::renderDeferred(Camera* camera)
 
 	Vector3 temp_ambient = scene->ambient_light;
 
+	if (!lights.size()) {
+		shader->setUniform("u_light_color", Vector3());
+		quad->render(GL_TRIANGLES);
+		//sphere->render(GL_TRIANGLES);
+	}
+
 	for (int i = 0; i < lights.size(); i++) {
-		bool any_visible = false;
 		LightEntity* light = lights[i];
-		if (light->visible)
-			any_visible = true;
 		
 		if (i == 0) {
 			glDisable(GL_BLEND);
@@ -698,11 +719,8 @@ void GTR::Renderer::renderDeferred(Camera* camera)
 		uploadLightToShader(light, shader, temp_ambient);
 
 		quad->render(GL_TRIANGLES);
+		//sphere->render(GL_TRIANGLES);
 
-		if (!any_visible) {
-			shader->setUniform("u_light_color", Vector3());
-			quad->render(GL_TRIANGLES);
-		}
 
 		temp_ambient = Vector3(0.0, 0.0, 0.0);  // CAMBIAR AMBIENT DESPUÉS DE LA PRIMERA ITERACIÓN
 

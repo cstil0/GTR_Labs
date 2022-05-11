@@ -640,6 +640,7 @@ uniform sampler2D u_met_rough_texture;
 layout(location = 0) out vec4 GB0;
 layout(location = 1) out vec4 GB1;
 layout(location = 2) out vec4 GB2;
+layout(location = 3) out vec4 GB3;
 
 
 // --- Functions ---
@@ -693,9 +694,10 @@ void main()
 
 	// Occlusion
 	// x coord has occlusion map
-	//light *= texture( u_met_rough_texture, v_uv ).x;
+	float occlusion_factor = texture( u_met_rough_texture, v_uv ).x;
 	// Occlusion can be either in the met_rou or occlusion texture
-	//light *= texture( u_occlusion_texture, v_uv ).x;
+	occlusion_factor *= texture( u_occlusion_texture, v_uv ).x;
+	vec3 occlusion = vec3(occlusion_factor);
 
 
 	// don't need to save the alpha
@@ -705,6 +707,7 @@ void main()
 	GB1 = vec4(N * 0.5 + vec3(0.5), 1.0);
 	// to make the world position go from 0 to 100 and visualize it better
 	GB2 = vec4(emissive, 1.0);
+	GB3 = vec4(occlusion, 1.0);
 
 }
 
@@ -723,6 +726,7 @@ uniform float u_alpha_cutoff;
 uniform sampler2D u_gb0_texture;
 uniform sampler2D u_gb1_texture;
 uniform sampler2D u_gb2_texture;
+uniform sampler2D u_gb3_texture;
 uniform sampler2D u_depth_texture;
 //uniform int u_normal_text_bool;
 uniform int u_texture2show;
@@ -869,6 +873,7 @@ void main()
 	vec4 gb0_color = texture(u_gb0_texture, v_uv);
 	vec4 gb1_color = texture(u_gb1_texture, v_uv);
 	vec4 gb2_color = texture(u_gb2_texture, v_uv);
+	vec4 gb3_color = texture(u_gb3_texture, v_uv);
 
 	vec2 uv = v_uv;
 	float depth = texture( u_depth_texture, uv ).x;
@@ -911,10 +916,8 @@ void main()
 	light += gb2_color.xyz;
 
 	// Occlusion
-	// x coord has occlusion map
-	// light *= texture( u_met_rough_texture, v_uv ).x;
-	// Occlusion can be either in the met_rou or occlusion texture
-	// light *= texture( u_occlusion_texture, v_uv ).x;
+	// Occlusion value is only in one coordinate
+	light *= gb3_color.x;
 
 	color.xyz *= light;
 
