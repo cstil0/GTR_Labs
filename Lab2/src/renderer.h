@@ -48,6 +48,7 @@ namespace GTR {
 		std::vector<LightEntity*> lights;
 
 		int max_lights;
+		int num_lights_shadows;
 
 		FBO* fbo;
 		Texture* shadowmap;
@@ -74,7 +75,8 @@ namespace GTR {
 
 		// -- Shadowmap functions --
 		void showShadowmap(LightEntity* light);
-		void generateShadowmap(LightEntity* light);
+		Vector4 assignMapPiece(int width, int height, int index, int num_elements);
+		void generateShadowmap(LightEntity* light, int index);
 
 		// -- Render functions --
 		//renders several elements of the scene

@@ -15,6 +15,7 @@
 #include <iostream>
 #include <algorithm>
 #include <vector>  
+#include <cmath>
 
 
 using namespace GTR;
@@ -103,82 +104,99 @@ void GTR::Renderer::sortRenderCalls() {
 
 // --- Shadowmap functions ---
 
+Vector4 GTR::Renderer::assignMapPiece(int width, int height, int index, int num_elements) {
+	//int nElements = 6;
+	int num_cols = (int)ceil(sqrt(num_elements));
+	int num_rows;
+	if (num_elements <= num_cols * (num_cols - 1)) // last row remains empty
+		num_rows = num_cols - 1;                 // eliminate it
+	else
+		num_rows = num_cols;
+
+	float min_cols_rows = (num_cols < num_rows) ? num_cols : num_rows;
+	float size = 1/ min_cols_rows;
+
+	int i_row = floor(index / num_cols);
+	int i_col = floor(index-(i_row*num_cols) % num_rows);
+
+	//return Vector4(2048*i_col*size, 2048*i_row*size, 2048*size, 2048*size);
+	if (index == 0)
+		return Vector4(0, 0, 2048 * 0.5, 2048 * 0.5);
+	else if (index == 1)
+		return Vector4(0, 2048 * 0.5, 2048 * 0.5, 2048 * 0.5);
+	else if (index == 2)
+		return Vector4(2048 * 0.5, 0, 2048 * 0.5, 2048 * 0.5);
+	else
+		return Vector4(2048 * 0.5, 2048 * 0.5, 2048 * 0.5, 2048 * 0.5);
+}
 // generate the shadowmap given a light
-void GTR::Renderer::generateShadowmap(LightEntity* light)
+void GTR::Renderer::generateShadowmap(LightEntity* light, int index)
 {
 	Camera* view_camera;
-	if (Scene::instance->typeOfRender == Scene::eRenderPipeline::MULTIPASS) {
-		// only spot and directional lights cast shadows
-		if (light->light_type != LightEntity::eTypeOfLight::SPOT && light->light_type != LightEntity::eTypeOfLight::DIRECTIONAL)
-			return;
-		if (!light->cast_shadows) {
-			// if a created light is no longer casts shadows delete it
-			if (light->fbo) {
-				delete light->fbo;
-				light->fbo = NULL;
-				light->shadowmap = NULL;
-			}
-			return;
-		}
+	//if (Scene::instance->typeOfRender == Scene::eRenderPipeline::MULTIPASS) {
+	//	// only spot and directional lights cast shadows
+	//	if (light->light_type != LightEntity::eTypeOfLight::SPOT && light->light_type != LightEntity::eTypeOfLight::DIRECTIONAL)
+	//		return;
+	//	if (!light->cast_shadows) {
+	//		// if a created light is no longer casts shadows delete it
+	//		if (light->fbo) {
+	//			delete light->fbo;
+	//			light->fbo = NULL;
+	//			light->shadowmap = NULL;
+	//		}
+	//		return;
+	//	}
 
-		if (!light->fbo) {
-			light->shadowmap = new Texture();
-			light->fbo = new FBO();
-			// We only need to store the depth buffer
-			light->fbo->setDepthOnly(2048, 2048);
-			// take the texture from the fbo and store it in another variable
-			light->shadowmap = light->fbo->depth_texture;
-		}
-		// Create a new camera from light
-		if (!light->light_camera)
-			light->light_camera = new Camera();
+	//	if (!light->fbo) {
+	//		light->shadowmap = new Texture();
+	//		light->fbo = new FBO();
+	//		// We only need to store the depth buffer
+	//		light->fbo->setDepthOnly(2048, 2048);
+	//		// take the texture from the fbo and store it in another variable
+	//		light->shadowmap = light->fbo->depth_texture;
+	//	}
+	//	// Create a new camera from light
+	//	if (!light->light_camera)
+	//		light->light_camera = new Camera();
 
-		// Guardamos la camara anterior para no perderla
-		view_camera = Camera::current;
-		// activate fbo to start painting in it and not in the screen
-		light->fbo->bind();
-	}
+	//	// Guardamos la camara anterior para no perderla
+	//	view_camera = Camera::current;
+	//	// activate fbo to start painting in it and not in the screen
+	//	light->fbo->bind();
+	//}
 
 	// SI ES SINGLE PASS GUARDAMOS EN EL ATLAS GENERAL
-	else if (Scene::instance->typeOfRender == Scene::eRenderPipeline::SINGLEPASS) {
-		// only spot and directional lights cast shadows
-		if (light->light_type != LightEntity::eTypeOfLight::SPOT && light->light_type != LightEntity::eTypeOfLight::DIRECTIONAL)
-			return;
-		if (!light->cast_shadows) {
-			// if a created light is no longer casts shadows delete it
-			if (fbo) {
-				delete fbo;
-				fbo = NULL;
-				shadowmap = NULL;
-			}
-			return;
+	//else if (Scene::instance->typeOfRender == Scene::eRenderPipeline::SINGLEPASS) {
+	// only spot and directional lights cast shadows
+	if (light->light_type != LightEntity::eTypeOfLight::SPOT && light->light_type != LightEntity::eTypeOfLight::DIRECTIONAL)
+		return;
+	if (!light->cast_shadows) {
+		// if a created light is no longer casts shadows delete it
+		if (fbo) {
+			delete fbo;
+			fbo = NULL;
+			shadowmap = NULL;
 		}
-
-		if (!fbo) {
-			shadowmap = new Texture();
-			fbo = new FBO();
-			// We only need to store the depth buffer
-			fbo->setDepthOnly(2048, 2048);
-			// take the texture from the fbo and store it in another variable
-			shadowmap = light->fbo->depth_texture;
-		}
-		// Create a new camera from light
-		if (!light->light_camera)
-			light->light_camera = new Camera();
-
-		// Guardamos la camara anterior para no perderla
-		view_camera = Camera::current;
-		// activate fbo to start painting in it and not in the screen
-		fbo->bind();
-		if (light->light_type == LightEntity::eTypeOfLight::SPOT) {
-			glViewport(0, 0, 1024, 1024);
-		}
-		else if (light->light_type == LightEntity::eTypeOfLight::DIRECTIONAL) {
-			glViewport(1024, 0, 1024, 1024);
-			//glViewport(0, 0, 1024, 1024);
-
-		}
+		return;
 	}
+
+	if (!fbo) {
+		shadowmap = new Texture();
+		fbo = new FBO();
+		// We only need to store the depth buffer
+		fbo->setDepthOnly(2048, 2048);
+		// take the texture from the fbo and store it in another variable
+		shadowmap = fbo->depth_texture;
+	}
+	// Create a new camera from light
+	if (!light->light_camera)
+		light->light_camera = new Camera();
+
+	// Guardamos la camara anterior para no perderla
+	view_camera = Camera::current;
+	// activate fbo to start painting in it and not in the screen
+	fbo->bind();
+	//}
 
 	Camera* light_camera = light->light_camera;
 
@@ -202,8 +220,9 @@ void GTR::Renderer::generateShadowmap(LightEntity* light)
 	}
 
 	light_camera->enable();
-	// clear depth buffer to avoid ghosting artifacts
-	glClear(GL_DEPTH_BUFFER_BIT);
+	// clear depth buffer to avoid ghosting artifacts only at first light
+	if (index == 0)
+		glClear(GL_DEPTH_BUFFER_BIT);
 
 	// paint all rendercalls
 	for (int i = 0; i < render_calls.size(); i++) {
@@ -213,28 +232,37 @@ void GTR::Renderer::generateShadowmap(LightEntity* light)
 			continue;
 		// render if the node is inside the frustum of the new camera
 		if (light_camera->testBoxInFrustum(rc.world_bounding.center, rc.world_bounding.halfsize)) {
+			//if (Scene::instance->typeOfRender == Scene::eRenderPipeline::SINGLEPASS){
+			//if (light->light_type == LightEntity::eTypeOfLight::SPOT) {
+			//	glViewport(0, 0, 1024, 1024);
+			//}
+			//else if (light->light_type == LightEntity::eTypeOfLight::DIRECTIONAL) {
+			//	glViewport(1024, 0, 1024, 1024);
+			//	//glViewport(0, 0, 1024, 1024);
+
+			//}
+			//}
+			//if (index == 0) {
+			Vector4 piece = assignMapPiece(Application::instance->window_width, Application::instance->window_height, index, num_lights_shadows);
+			glViewport(piece.x, piece.y, piece.z, piece.w);
+
+			//}
 			renderFlatMesh(rc.model, rc.mesh, rc.material, light_camera);
 		}
 	}
-
-	if (Scene::instance->typeOfRender == Scene::eRenderPipeline::MULTIPASS) {
-		// go back to default system
-		light->fbo->unbind();
-	}
-	else if (Scene::instance->typeOfRender == Scene::eRenderPipeline::SINGLEPASS) {
-
-		glViewport(0,0,Application::instance->window_width, Application::instance->window_height);
-		fbo->unbind();
-	}
+	
+	glViewport(0,0,Application::instance->window_width, Application::instance->window_height);
+	fbo->unbind();
 
 	// go back to default system
 	//light->fbo->unbind();
 	view_camera->enable();
+	glEnable(GL_DEPTH_TEST);
 }
 
 // to show the shadowmap for debugging purposes
 void Renderer::showShadowmap(LightEntity* light) {
-	if (!light->shadowmap)
+	if (!shadowmap)
 		return;
 
 	Shader* depth_shader = Shader::getDefaultShader("depth");
@@ -242,12 +270,13 @@ void Renderer::showShadowmap(LightEntity* light) {
 	// set uniforms to delinearize shadowmap texture
 	depth_shader->setUniform("u_camera_nearfar", Vector2(light->light_camera->near_plane, light->light_camera->far_plane));
 	glViewport(0, 0, 256, 256);
-	if (Scene::instance->typeOfRender == Scene::eRenderPipeline::MULTIPASS) {
-		light->shadowmap->toViewport(depth_shader);
-	}
-	else if (Scene::instance->typeOfRender == Scene::eRenderPipeline::SINGLEPASS) {
-		shadowmap->toViewport(depth_shader);
-	}
+	// PONER BIEN
+	//if (Scene::instance->typeOfRender == Scene::eRenderPipeline::MULTIPASS) {
+	shadowmap->toViewport(depth_shader);
+	//}
+	//else if (Scene::instance->typeOfRender == Scene::eRenderPipeline::SINGLEPASS) {
+	//	shadowmap->toViewport(depth_shader);
+	//}
 
 	// return to default
 	glViewport(0, 0, Application::instance->window_width, Application::instance->window_height);
@@ -332,12 +361,16 @@ void Renderer::renderScene_RenderCalls(GTR::Scene* scene, Camera* camera) {
 
 	// Create the lights vector
 	lights.clear();
+	num_lights_shadows = 0;
 	for (int i = 0; i < scene->entities.size(); i++) {
 		BaseEntity* ent = scene->entities[i];
 		if (ent->entity_type == GTR::eEntityType::LIGHT) {
 			LightEntity* light = (LightEntity*)ent;
-			if (light->visible)
+			if (light->visible) {
 				lights.push_back(light);
+				if (light->cast_shadows)
+					num_lights_shadows += 1;
+			}
 		}
 	}
 
@@ -347,7 +380,7 @@ void Renderer::renderScene_RenderCalls(GTR::Scene* scene, Camera* camera) {
 	for (int i = 0; i < lights.size(); i++) {
 		LightEntity* light = lights[i];
 		if (light->cast_shadows) {
-			generateShadowmap(light);
+			generateShadowmap(light, i);
 		}
 	}
 
@@ -689,20 +722,11 @@ void GTR::Renderer::renderDeferred(Camera* camera)
 	//pass the inverse window resolution, this may be useful
 	shader->setUniform("u_iRes", Vector2(1.0 / (float)width, 1.0 / (float)height));
 
-
-	// draw a quad for each light
-	// ESTO AHORA MISMO NO EST� IMPLEMENTADO ASI
-	//if(!lights.size()){
-	//	shader->setUniform("u_light_color", Vector3());
-	//	quad->render(GL_TRIANGLES);
-	//}
-
 	Vector3 temp_ambient = scene->ambient_light;
 
 	if (!lights.size()) {
 		shader->setUniform("u_light_color", Vector3());
-		quad->render(GL_TRIANGLES);
-		//sphere->render(GL_TRIANGLES);
+			quad->render(GL_TRIANGLES);
 	}
 
 	for (int i = 0; i < lights.size(); i++) {
@@ -717,9 +741,11 @@ void GTR::Renderer::renderDeferred(Camera* camera)
 		}
 
 		uploadLightToShader(light, shader, temp_ambient);
-
-		quad->render(GL_TRIANGLES);
-		//sphere->render(GL_TRIANGLES);
+		if (light->light_type == LightEntity::eTypeOfLight::DIRECTIONAL)
+			quad->render(GL_TRIANGLES);
+		else
+			quad->render(GL_TRIANGLES);
+			//sphere->render(GL_TRIANGLES);
 
 
 		temp_ambient = Vector3(0.0, 0.0, 0.0);  // CAMBIAR AMBIENT DESPUÉS DE LA PRIMERA ITERACIÓN
@@ -839,7 +865,7 @@ void Renderer::setSinglepass_parameters(GTR::Material* material, Shader* shader,
 	// shadows parameters
 	std::vector<int> lights_cast_shadows;
 	// didn't make it to pass multiple textures to the shader, so shadows are not working in singlepass
-	std::vector<Texture*> lights_shadowmap;
+	//std::vector<Texture*> lights_shadowmap;
 	std::vector<Matrix44> lights_shadowmap_vpm;
 	std::vector<float> lights_shadow_bias;
 
@@ -873,7 +899,7 @@ void Renderer::setSinglepass_parameters(GTR::Material* material, Shader* shader,
 
 		if (light->cast_shadows) {
 			lights_cast_shadows.push_back(1);
-			lights_shadowmap.push_back(light->shadowmap);
+			//lights_shadowmap.push_back(light->shadowmap);
 			lights_shadowmap_vpm.push_back(light->light_camera->viewprojection_matrix);
 			lights_shadow_bias.push_back(light->shadow_bias);
 		}
@@ -897,7 +923,7 @@ void Renderer::setSinglepass_parameters(GTR::Material* material, Shader* shader,
 	shader->setUniform("u_lights_direction", lights_direction);
 
 	shader->setUniform("u_lights_cast_shadows", lights_cast_shadows);
-	shader->setUniform("u_light_shadowmap", lights_shadowmap, 8);
+	shader->setUniform("u_light_shadowmap", shadowmap, 8);
 	shader->setUniform("u_light_shadowmap_vpm", lights_shadowmap_vpm);
 	shader->setUniform("u_light_shadow_bias", lights_shadow_bias);
 
@@ -913,7 +939,7 @@ void Renderer::setSinglepass_parameters(GTR::Material* material, Shader* shader,
 	lights_cone_exp.clear();
 	lights_direction.clear();
 	lights_cast_shadows.clear();
-	lights_shadowmap.clear();
+	//lights_shadowmap.clear();
 	lights_shadowmap_vpm.clear();
 	lights_shadow_bias.clear();
 }
@@ -978,7 +1004,7 @@ void Renderer::setMultipassParameters(GTR::Material* material, Shader* shader, M
 
 		if (light->shadowmap && light->cast_shadows) {
 			shader->setUniform("u_light_cast_shadows", 1);
-			shader->setUniform("u_light_shadowmap", light->shadowmap, 8);
+			shader->setUniform("u_light_shadowmap", shadowmap, 8);
 			shader->setUniform("u_light_shadowmap_vpm", light->light_camera->viewprojection_matrix);
 			shader->setUniform("u_light_shadow_bias", light->shadow_bias);
 		}
