@@ -57,6 +57,7 @@ namespace GTR {
 		bool show_shadowmap;
 		int debug_shadowmap;
 		int debug_texture;
+		bool show_buffers;
 
 		FBO* gbuffers_fbo;
 		FBO* illumination_fbo;
@@ -87,16 +88,18 @@ namespace GTR {
 		//to render one mesh given its material and transformation matrix
 		void renderMeshWithMaterial(const Matrix44 model, Mesh* mesh, GTR::Material* material, Camera* camera);
 		void renderMeshWithMaterialToGBuffers(const Matrix44 model, Mesh* mesh, GTR::Material* material, Camera* camera);
-		
-		void setTextures(GTR::Material* material, Shader* shader);
-		void setSinglepass_parameters(GTR::Material* material, Shader* shader, Mesh* mesh);
-		void setMultipassParameters(GTR::Material* material, Shader* shader, Mesh* mesh);
 		// to render flat objects for generating the shadowmaps
 		void renderFlatMesh(const Matrix44 model, Mesh* mesh, GTR::Material* material, Camera* camera);
 		void showGBuffers(int width, int height, Camera* camera);
 		void renderForward(Camera* camera);
 		void renderDeferred(Camera* camera);
 		void renderInMenu();
+
+		// -- Upload to shader functions --
+		void uploadLightToShader(GTR::LightEntity* light, Shader* shader, Vector3 ambient_light);
+		void setTextures(GTR::Material* material, Shader* shader);
+		void setSinglepass_parameters(GTR::Material* material, Shader* shader, Mesh* mesh);
+		void setMultipassParameters(GTR::Material* material, Shader* shader, Mesh* mesh);
 	};
 
 	Texture* CubemapFromHDRE(const char* filename);

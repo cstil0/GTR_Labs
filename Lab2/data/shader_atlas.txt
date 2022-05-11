@@ -4,6 +4,7 @@ texture basic.vs texture.fs
 multi_pass basic.vs light_multi_pass.fs
 single_pass basic.vs light_single_pass.fs
 gbuffers basic.vs gbuffers.fs
+deferred quad.vs deferred.fs
 depth quad.vs depth.fs
 multi basic.vs multi.fs
 //------------------------------------------------------------------
@@ -633,7 +634,7 @@ uniform sampler2D u_normal_texture;
 uniform sampler2D u_emissive_texture;
 uniform sampler2D u_occlusion_texture;
 uniform sampler2D u_met_rough_texture;
-uniform int u_texture2show;
+//uniform int u_texture2show;
 
 // gbuffers out
 layout(location = 0) out vec4 GB0;
