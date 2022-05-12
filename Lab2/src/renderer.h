@@ -63,6 +63,8 @@ namespace GTR {
 		FBO* gbuffers_fbo;
 		FBO* illumination_fbo;
 
+		// color correction
+		bool gamma;
 
 		Renderer();
 
@@ -95,13 +97,20 @@ namespace GTR {
 		void showGBuffers(int width, int height, Camera* camera);
 		void renderForward(Camera* camera);
 		void renderDeferred(Camera* camera);
-		void renderInMenu();
 
 		// -- Upload to shader functions --
 		void uploadLightToShader(GTR::LightEntity* light, Shader* shader, Vector3 ambient_light);
 		void setTextures(GTR::Material* material, Shader* shader);
 		void setSinglepass_parameters(GTR::Material* material, Shader* shader, Mesh* mesh);
 		void setMultipassParameters(GTR::Material* material, Shader* shader, Mesh* mesh);
+
+		void renderInMenu();
+
+		// TO DO:
+
+		// MODIFICAR IF DEL SHADER SI TIENE O NO GAMMA PARA OPTIMIZAR
+		// BUSCAR COMO METER INCLUDE EN EL SHADER PARA NO REPETIR FUNCIONES
+		// ESFERA QUAD DEFERRED
 	};
 
 	Texture* CubemapFromHDRE(const char* filename);

@@ -7,6 +7,251 @@ gbuffers basic.vs gbuffers.fs
 deferred quad.vs deferred.fs
 depth quad.vs depth.fs
 multi basic.vs multi.fs
+
+// FUNCTIONS
+
+\normalmap_functions
+
+mat3 cotangent_frame(vec3 N, vec3 p, vec2 uv)
+{
+	// get edge vectors of the pixel triangle
+	vec3 dp1 = dFdx( p );
+	vec3 dp2 = dFdy( p );
+	vec2 duv1 = dFdx( uv );
+	vec2 duv2 = dFdy( uv );
+	// solve the linear system
+	vec3 dp2perp = cross( dp2, N );
+	vec3 dp1perp = cross( N, dp1 );
+	vec3 T = dp2perp * duv1.x + dp1perp * duv2.x;
+	vec3 B = dp2perp * duv1.y + dp1perp * duv2.y;
+	// construct a scale-invariant frame 
+	float invmax = inversesqrt( max( dot(T,T), dot(B,B) ) );
+	return mat3( T * invmax, B * invmax, N );
+}
+
+vec3 perturbNormal(vec3 N, vec3 WP, vec2 uv, vec3 normal_pixel)
+{
+	normal_pixel = normal_pixel * 255./127. - 128./127.;
+	mat3 TBN = cotangent_frame(N, WP, uv);
+	return normalize(TBN * normal_pixel);
+}
+
+\degamma
+// from gamma (perception) values to linear values
+vec3 degamma(vec3 c)
+{
+	return pow(c,vec3(2.2));
+}
+
+// from linear values to gamma (perception) values
+vec3 gamma(vec3 c)
+{
+	return pow(c,vec3(1.0/2.2));
+}
+
+\light_functions_multi
+
+// Save computations related to light
+struct LightStruct{
+	vec3 L;
+	vec3 D;
+	vec3 N;
+
+	vec3 world_position;
+
+	float NdotL;
+	float LdotD;
+	float light_dist;
+
+	float spot_factor;
+	float att_factor;
+	float shadow_factor;
+}LightComp;
+
+// L vector for point and spot lights
+void computeL_point(inout LightStruct lc){
+	// Distance from current point to light
+	vec3 L = u_light_position - lc.world_position;
+	// Modulus			
+	lc.light_dist = length(L);
+	// Normalize L
+	lc.L = L/lc.light_dist;
+}
+
+// L vector for directional light
+void computeL_directional(inout LightStruct lc){
+	// All points take the same light direction
+	vec3 L = u_light_direction;
+	lc.light_dist = length(L);
+	lc.L = L/lc.light_dist;
+}
+
+void computeNdotL(inout LightStruct lc){
+	lc.NdotL = clamp(dot(lc.L,lc.N), 0.0, 1.0);
+}
+
+void computeSpotFactor(inout LightStruct lc){
+	lc.D = normalize(u_light_direction);
+	lc.LdotD = dot(-lc.L, lc.D);
+	// check if point inside the spotlight
+	if (lc.LdotD >= u_light_cone_cos){
+		// compute how much it is inside
+		lc.spot_factor = pow(lc.LdotD, u_light_cone_exp);	
+	}
+	else{
+		lc.spot_factor = 0.0;
+	}	
+}
+
+void computeAttenuation(inout LightStruct lc){
+	float att_factor = u_light_max_distance - lc.light_dist;
+	att_factor /= u_light_max_distance;
+	att_factor = max(att_factor, 0.0);
+	// apply quadratic attenuation
+	lc.att_factor = pow(att_factor,2);
+}
+
+void testShadowMap(inout LightStruct lc){
+	//project our 3D position to the shadowmap
+	vec4 proj_pos = u_light_shadowmap_vpm * vec4(lc.world_position, 1.0);
+	
+	//from homogeneus space to clip space
+	vec2 shadow_uv = proj_pos.xy / proj_pos.w;
+	
+	//from clip space to uv space
+	shadow_uv = shadow_uv * 0.5 + vec2(0.5);
+		
+	//get point depth [-1 .. +1] in non-linear space
+	float real_depth = (proj_pos.z - u_light_shadow_bias) / 
+	proj_pos.w;
+	
+	//normalize from [-1..+1] to [0..+1] still non-linear
+	real_depth = real_depth * 0.5 + 0.5;
+	
+	//read depth from depth buffer in [0..+1] non-linear
+	float shadow_depth = texture( u_light_shadowmap, shadow_uv).x;
+	
+	//compute final shadow factor by comparing
+	lc.shadow_factor = 1.0;
+	
+	//we can compare them, even if they are not linear
+	if( shadow_depth < real_depth )
+		lc.shadow_factor = 0.0;
+		
+	//We must see if it is outside the sides
+	if( shadow_uv.x < 0.0 || shadow_uv.x > 1.0 ||shadow_uv.y < 0.0 || shadow_uv.y > 1.0 )
+		lc.shadow_factor = 1.0;
+
+	//it is before near or behind far plane
+	if(real_depth < 0.0 || real_depth > 1.0)
+		lc.shadow_factor = 1.0;
+}
+
+\light_functions_single
+
+// Save computations related to light
+struct LightStruct{
+	vec3 L;
+	vec3 D;
+	vec3 N;
+
+	float NdotL;
+	float LdotD;
+	float light_dist;
+
+	float spot_factor;
+	float att_factor;
+	float shadow_factor;
+}LightComp;
+
+// L vector for point and spot lights
+void computeL_point(inout LightStruct lc, int i){
+	// Distance from current point to light
+	vec3 L = u_lights_position[i] - v_world_position;
+	// Modulus			
+	lc.light_dist = length(L);
+	// Normalize L
+	lc.L = L/lc.light_dist;
+}
+
+// L vector for directional light
+void computeL_directional(inout LightStruct lc, int i){
+	// All points take the same light direction
+	vec3 L = u_lights_direction[i];
+	lc.light_dist = length(L);
+	lc.L = L/lc.light_dist;
+}
+
+void computeNdotL(inout LightStruct lc){
+	vec3 V = normalize(u_camera_position - v_world_position);
+	vec3 normal_pixel = texture2D( u_normal_texture, v_uv ).xyz; 
+	vec3 N = normalize(v_normal);
+	// if there is a normal texture, compute the normal according to it
+	if (u_normal_text_bool == 1)
+		lc.N = perturbNormal(N, V, v_uv, normal_pixel);
+	else
+		lc.N = N;
+
+	lc.NdotL = clamp(dot(lc.L,lc.N), 0.0, 1.0);
+}
+
+void computeSpotFactor(inout LightStruct lc, int i){
+	lc.D = normalize(u_lights_direction[i]);
+	lc.LdotD = dot(-lc.L, lc.D);
+	// check if point inside the spotlight
+	if (lc.LdotD >= u_lights_cone_cos[i]){
+		// compute how much it is inside
+		lc.spot_factor = pow(lc.LdotD, u_lights_cone_exp[i]);	
+	}
+	else{
+		lc.spot_factor = 0.0;
+	}	
+}
+
+void computeAttenuation(inout LightStruct lc, int i){
+	float att_factor = u_lights_max_distance[i] - lc.light_dist;
+	att_factor /= u_lights_max_distance[i];
+	att_factor = max(att_factor, 0.0);
+	// apply quadratic attenuation
+	lc.att_factor = pow(att_factor,2);
+}
+
+void testShadowMap(inout LightStruct lc, int i){
+	//project our 3D position to the shadowmap
+	vec4 proj_pos = u_lights_shadowmap_vpm[i] * vec4(v_world_position,1.0);
+	
+	//from homogeneus space to clip space
+	vec2 shadow_uv = proj_pos.xy / proj_pos.w;
+	
+	//from clip space to uv space
+	shadow_uv = shadow_uv * 0.5 + vec2(0.5);
+		
+	//get point depth [-1 .. +1] in non-linear space
+	float real_depth = (proj_pos.z - u_lights_shadow_bias[i]) / 
+	proj_pos.w;
+	
+	//normalize from [-1..+1] to [0..+1] still non-linear
+	real_depth = real_depth * 0.5 + 0.5;
+	
+	//read depth from depth buffer in [0..+1] non-linear
+	float shadow_depth = texture( u_lights_shadowmap[i], shadow_uv).x;
+	
+	//compute final shadow factor by comparing
+	lc.shadow_factor = 1.0;
+	
+	//we can compare them, even if they are not linear
+	if( shadow_depth < real_depth )
+		lc.shadow_factor = 0.0;
+		
+	//We must see if it is outside the sides
+	if( shadow_uv.x < 0.0 || shadow_uv.x > 1.0 ||shadow_uv.y < 0.0 || shadow_uv.y > 1.0 )
+		lc.shadow_factor = 1.0;
+
+	//it is before near or behind far plane
+	if(real_depth < 0.0 || real_depth > 1.0)
+		lc.shadow_factor = 1.0;
+}
+
 //------------------------------------------------------------------
 \basic.vs
 
@@ -123,6 +368,9 @@ uniform float u_time;
 uniform float u_alpha_cutoff;
 uniform vec3 u_camera_position;
 
+// Color correction
+uniform int u_gamma;
+
 // Textures
 uniform sampler2D u_texture;
 uniform int u_normal_text_bool;
@@ -151,139 +399,18 @@ uniform float u_lights_shadow_bias[MAX_LIGHTS];
 
 out vec4 FragColor;
 
-// Save computations related to light
-struct LightStruct{
-	vec3 L;
-	vec3 D;
-	vec3 N;
-
-	float NdotL;
-	float LdotD;
-	float light_dist;
-
-	float spot_factor;
-	float att_factor;
-	float shadow_factor;
-}LightComp;
-
-// --- Functions ---
-mat3 cotangent_frame(vec3 N, vec3 p, vec2 uv)
-{
-	// get edge vectors of the pixel triangle
-	vec3 dp1 = dFdx( p );
-	vec3 dp2 = dFdy( p );
-	vec2 duv1 = dFdx( uv );
-	vec2 duv2 = dFdy( uv );
-	// solve the linear system
-	vec3 dp2perp = cross( dp2, N );
-	vec3 dp1perp = cross( N, dp1 );
-	vec3 T = dp2perp * duv1.x + dp1perp * duv2.x;
-	vec3 B = dp2perp * duv1.y + dp1perp * duv2.y;
-	// construct a scale-invariant frame 
-	float invmax = inversesqrt( max( dot(T,T), dot(B,B) ) );
-	return mat3( T * invmax, B * invmax, N );
-}
-
-vec3 perturbNormal(vec3 N, vec3 WP, vec2 uv, vec3 normal_pixel)
-{
-	normal_pixel = normal_pixel * 255./127. - 128./127.;
-	mat3 TBN = cotangent_frame(N, WP, uv);
-	return normalize(TBN * normal_pixel);
-}
-
-// L vector for point and spot lights
-void computeL_point(inout LightStruct lc, int i){
-	// Distance from current point to light
-	vec3 L = u_lights_position[i] - v_world_position;
-	// Modulus			
-	lc.light_dist = length(L);
-	// Normalize L
-	lc.L = L/lc.light_dist;
-}
-
-// L vector for directional light
-void computeL_directional(inout LightStruct lc, int i){
-	// All points take the same light direction
-	vec3 L = u_lights_direction[i];
-	lc.light_dist = length(L);
-	lc.L = L/lc.light_dist;
-}
-
-void computeNdotL(inout LightStruct lc){
-	vec3 V = normalize(u_camera_position - v_world_position);
-	vec3 normal_pixel = texture2D( u_normal_texture, v_uv ).xyz; 
-	vec3 N = normalize(v_normal);
-	// if there is a normal texture, compute the normal according to it
-	if (u_normal_text_bool == 1)
-		lc.N = perturbNormal(N, V, v_uv, normal_pixel);
-	else
-		lc.N = N;
-
-	lc.NdotL = clamp(dot(lc.L,lc.N), 0.0, 1.0);
-}
-
-void computeSpotFactor(inout LightStruct lc, int i){
-	lc.D = normalize(u_lights_direction[i]);
-	lc.LdotD = dot(-lc.L, lc.D);
-	// check if point inside the spotlight
-	if (lc.LdotD >= u_lights_cone_cos[i]){
-		// compute how much it is inside
-		lc.spot_factor = pow(lc.LdotD, u_lights_cone_exp[i]);	
-	}
-	else{
-		lc.spot_factor = 0.0;
-	}	
-}
-
-void computeAttenuation(inout LightStruct lc, int i){
-	float att_factor = u_lights_max_distance[i] - lc.light_dist;
-	att_factor /= u_lights_max_distance[i];
-	att_factor = max(att_factor, 0.0);
-	// apply quadratic attenuation
-	lc.att_factor = pow(att_factor,2);
-}
-
-void testShadowMap(inout LightStruct lc, int i){
-	//project our 3D position to the shadowmap
-	vec4 proj_pos = u_lights_shadowmap_vpm[i] * vec4(v_world_position,1.0);
-	
-	//from homogeneus space to clip space
-	vec2 shadow_uv = proj_pos.xy / proj_pos.w;
-	
-	//from clip space to uv space
-	shadow_uv = shadow_uv * 0.5 + vec2(0.5);
-		
-	//get point depth [-1 .. +1] in non-linear space
-	float real_depth = (proj_pos.z - u_lights_shadow_bias[i]) / 
-	proj_pos.w;
-	
-	//normalize from [-1..+1] to [0..+1] still non-linear
-	real_depth = real_depth * 0.5 + 0.5;
-	
-	//read depth from depth buffer in [0..+1] non-linear
-	float shadow_depth = texture( u_lights_shadowmap[i], shadow_uv).x;
-	
-	//compute final shadow factor by comparing
-	lc.shadow_factor = 1.0;
-	
-	//we can compare them, even if they are not linear
-	if( shadow_depth < real_depth )
-		lc.shadow_factor = 0.0;
-		
-	//We must see if it is outside the sides
-	if( shadow_uv.x < 0.0 || shadow_uv.x > 1.0 ||shadow_uv.y < 0.0 || shadow_uv.y > 1.0 )
-		lc.shadow_factor = 1.0;
-
-	//it is before near or behind far plane
-	if(real_depth < 0.0 || real_depth > 1.0)
-		lc.shadow_factor = 1.0;
-}
+#include normalmap_functions
+#include degamma
+#include light_functions_single
 
 void main()
 {
 	vec2 uv = v_uv;
 	vec4 color = u_color;
 	color *= texture( u_texture, v_uv );
+
+	if (u_gamma == 1)
+		color.xyz = degamma(color.xyz);
 
 	if(color.a < u_alpha_cutoff)
 		discard;
@@ -334,7 +461,7 @@ void main()
 	// Apply other textures
 	// Emissive
 	light += texture( u_emissive_texture, v_uv ).xyz;
-
+	
 	// Occlusion
 	// x coord has occlusion map
 	light *= texture( u_met_rough_texture, v_uv ).x;
@@ -342,6 +469,9 @@ void main()
 	light *= texture( u_occlusion_texture, v_uv ).x;
 
 	color.xyz *= light;
+
+	if (u_gamma == 1)
+		color.xyz = gamma(color.xyz);
 
 	// Debug textures
 	// Normal
@@ -376,6 +506,9 @@ uniform vec4 u_color;
 uniform float u_time;
 uniform float u_alpha_cutoff;
 
+// Color correction
+uniform int u_gamma;
+
 uniform sampler2D u_texture;
 uniform int u_normal_text_bool;
 uniform sampler2D u_normal_texture;
@@ -403,133 +536,9 @@ uniform float u_light_shadow_bias;
 
 out vec4 FragColor;
 
-// Save computations related to light
-struct LightStruct{
-	vec3 L;
-	vec3 D;
-	vec3 N;
-
-	float NdotL;
-	float LdotD;
-	float light_dist;
-
-	float spot_factor;
-	float att_factor;
-	float shadow_factor;
-}LightComp;
-
-// --- Functions ---
-mat3 cotangent_frame(vec3 N, vec3 p, vec2 uv)
-{
-	// get edge vectors of the pixel triangle
-	vec3 dp1 = dFdx( p );
-	vec3 dp2 = dFdy( p );
-	vec2 duv1 = dFdx( uv );
-	vec2 duv2 = dFdy( uv );
-	// solve the linear system
-	vec3 dp2perp = cross( dp2, N );
-	vec3 dp1perp = cross( N, dp1 );
-	vec3 T = dp2perp * duv1.x + dp1perp * duv2.x;
-	vec3 B = dp2perp * duv1.y + dp1perp * duv2.y;
-	// construct a scale-invariant frame 
-	float invmax = inversesqrt( max( dot(T,T), dot(B,B) ) );
-	return mat3( T * invmax, B * invmax, N );
-}
-
-vec3 perturbNormal(vec3 N, vec3 WP, vec2 uv, vec3 normal_pixel)
-{
-	normal_pixel = normal_pixel * 255./127. - 128./127.;
-	mat3 TBN = cotangent_frame(N, WP, uv);
-	return normalize(TBN * normal_pixel);
-}
-
-// L vector for point and spot lights
-void computeL_point(inout LightStruct lc){
-	// Distance from current point to light
-	vec3 L = u_light_position - v_world_position;
-	// Modulus			
-	lc.light_dist = length(L);
-	// Normalize L
-	lc.L = L/lc.light_dist;
-}
-
-// L vector for directional light
-void computeL_directional(inout LightStruct lc){
-	// All points take the same light direction
-	vec3 L = u_light_direction;
-	lc.light_dist = length(L);
-	lc.L = L/lc.light_dist;
-}
-
-void computeNdotL(inout LightStruct lc){
-	vec3 V = normalize(u_camera_position - v_world_position);
-	vec3 normal_pixel = texture2D( u_normal_texture, v_uv ).xyz; 
-	vec3 N = normalize(v_normal);
-	// if there is a normal texture, compute the normal according to it
-	if (u_normal_text_bool == 1)
-		lc.N = perturbNormal(N, V, v_uv, normal_pixel);
-	else
-		lc.N = N;
-
-	lc.NdotL = clamp(dot(lc.L,lc.N), 0.0, 1.0);
-}
-
-void computeSpotFactor(inout LightStruct lc){
-	lc.D = normalize(u_light_direction);
-	lc.LdotD = dot(-lc.L, lc.D);
-	// check if point inside the spotlight
-	if (lc.LdotD >= u_light_cone_cos){
-		// compute how much it is inside
-		lc.spot_factor = pow(lc.LdotD, u_light_cone_exp);	
-	}
-	else{
-		lc.spot_factor = 0.0;
-	}	
-}
-
-void computeAttenuation(inout LightStruct lc){
-	float att_factor = u_light_max_distance - lc.light_dist;
-	att_factor /= u_light_max_distance;
-	att_factor = max(att_factor, 0.0);
-	// apply quadratic attenuation
-	lc.att_factor = pow(att_factor,2);
-}
-
-void testShadowMap(inout LightStruct lc, vec3 pos){
-	//project our 3D position to the shadowmap
-	vec4 proj_pos = u_light_shadowmap_vpm * vec4(pos,1.0);
-	
-	//from homogeneus space to clip space
-	vec2 shadow_uv = proj_pos.xy / proj_pos.w;
-	
-	//from clip space to uv space
-	shadow_uv = shadow_uv * 0.5 + vec2(0.5);
-		
-	//get point depth [-1 .. +1] in non-linear space
-	float real_depth = (proj_pos.z - u_light_shadow_bias) / 
-	proj_pos.w;
-	
-	//normalize from [-1..+1] to [0..+1] still non-linear
-	real_depth = real_depth * 0.5 + 0.5;
-	
-	//read depth from depth buffer in [0..+1] non-linear
-	float shadow_depth = texture( u_light_shadowmap, shadow_uv).x;
-	
-	//compute final shadow factor by comparing
-	lc.shadow_factor = 1.0;
-	
-	//we can compare them, even if they are not linear
-	if( shadow_depth < real_depth )
-		lc.shadow_factor = 0.0;
-		
-	//We must see if it is outside the sides
-	if( shadow_uv.x < 0.0 || shadow_uv.x > 1.0 ||shadow_uv.y < 0.0 || shadow_uv.y > 1.0 )
-		lc.shadow_factor = 1.0;
-
-	//it is before near or behind far plane
-	if(real_depth < 0.0 || real_depth > 1.0)
-		lc.shadow_factor = 1.0;
-}
+#include normalmap_functions
+#include degamma
+#include light_functions_multi
 
 void main()
 {
@@ -537,6 +546,8 @@ void main()
 		vec3(0.0, 0.0, 0.0), //L
 		vec3(0.0, 0.0, 0.0), //D
 		vec3(0.0, 0.0, 0.0), //N
+
+		vec3(0.0, 0.0, 0.0), //world_position
 
 		0.0, // NdotL
 		0.0, // LdotD
@@ -547,9 +558,14 @@ void main()
 		1.0 // shadow_factor
 	);
 
+	LightComp.world_position = v_world_position;
+
 	vec2 uv = v_uv;
 	vec4 color = u_color;
 	color *= texture( u_texture, v_uv );
+
+	if (u_gamma == 1)
+		color.xyz = degamma(color.xyz);
 
 	if(color.a < u_alpha_cutoff)
 		discard;
@@ -576,7 +592,7 @@ void main()
 	computeNdotL(LightComp);
 
 	if (u_light_cast_shadows == 1){
-		testShadowMap(LightComp, v_world_position);
+		testShadowMap(LightComp);
 	}
 	computeAttenuation(LightComp);
 	light += u_light_color * LightComp.NdotL * LightComp.att_factor * LightComp.spot_factor * LightComp.shadow_factor;
@@ -593,6 +609,9 @@ void main()
 	light *= texture( u_occlusion_texture, v_uv ).x;
 
 	color.xyz *= light;
+
+	if (u_gamma == 1)
+		color.xyz = gamma(color.xyz);
 
 	// Debug textures
 	// Normal
@@ -642,31 +661,7 @@ layout(location = 1) out vec4 GB1;
 layout(location = 2) out vec4 GB2;
 layout(location = 3) out vec4 GB3;
 
-
-// --- Functions ---
-mat3 cotangent_frame(vec3 N, vec3 p, vec2 uv)
-{
-	// get edge vectors of the pixel triangle
-	vec3 dp1 = dFdx( p );
-	vec3 dp2 = dFdy( p );
-	vec2 duv1 = dFdx( uv );
-	vec2 duv2 = dFdy( uv );
-	// solve the linear system
-	vec3 dp2perp = cross( dp2, N );
-	vec3 dp1perp = cross( N, dp1 );
-	vec3 T = dp2perp * duv1.x + dp1perp * duv2.x;
-	vec3 B = dp2perp * duv1.y + dp1perp * duv2.y;
-	// construct a scale-invariant frame 
-	float invmax = inversesqrt( max( dot(T,T), dot(B,B) ) );
-	return mat3( T * invmax, B * invmax, N );
-}
-
-vec3 perturbNormal(vec3 N, vec3 WP, vec2 uv, vec3 normal_pixel)
-{
-	normal_pixel = normal_pixel * 255./127. - 128./127.;
-	mat3 TBN = cotangent_frame(N, WP, uv);
-	return normalize(TBN * normal_pixel);
-}
+#include normalmap_functions
 
 void main()
 {
@@ -699,7 +694,6 @@ void main()
 	occlusion_factor *= texture( u_occlusion_texture, v_uv ).x;
 	vec3 occlusion = vec3(occlusion_factor);
 
-
 	// don't need to save the alpha
 	GB0 = vec4(color.xyz, 1.0);
 	// ESTARIA BIEN ARREGLAR ESTO TAMBIÉN EN MULTI Y SINGLE PASS FORWARD
@@ -713,6 +707,133 @@ void main()
 
 //------------------------------------------------------------
 \deferred.fs
+#version 330 core
+
+in vec2 v_uv;
+
+uniform vec3 u_camera_position;
+uniform vec4 u_color;
+uniform float u_time;
+uniform float u_alpha_cutoff;
+
+// YA NO TENEMOS TEXTURAS DEL MATERIAL -- AHORA TENEMOS LAS TEXTURAS DEL GBUFFER
+uniform sampler2D u_gb0_texture;
+uniform sampler2D u_gb1_texture;
+uniform sampler2D u_gb2_texture;
+uniform sampler2D u_gb3_texture;
+uniform sampler2D u_depth_texture;
+//uniform int u_normal_text_bool;
+uniform int u_texture2show;
+
+uniform mat4 u_inverse_viewprojection;
+uniform vec2 u_iRes;
+
+// Light parameters
+uniform vec3 u_ambient_light;
+
+// Color correction
+uniform int u_gamma;
+
+// Textures
+uniform int u_light_type;
+uniform vec3 u_light_position;
+uniform vec3 u_light_color;
+uniform float u_light_max_distance;
+uniform vec3 u_light_direction;
+uniform float u_light_cone_cos;
+uniform float u_light_cone_exp;
+
+uniform int u_light_cast_shadows;
+uniform sampler2D u_light_shadowmap;
+uniform mat4 u_light_shadowmap_vpm;
+uniform float u_light_shadow_bias;
+
+out vec4 FragColor;
+
+#include degamma
+#include light_functions_multi
+
+void main()
+{
+	LightComp = LightStruct(
+		vec3(0.0, 0.0, 0.0), //L
+		vec3(0.0, 0.0, 0.0), //D
+		vec3(0.0, 0.0, 0.0), //N
+
+		vec3(0.0, 0.0, 0.0), //World pos
+
+		0.0, // NdotL
+		0.0, // LdotD
+		0.0, // light dist
+
+		1.0, // spot factor
+		1.0, // attenuation factor
+		1.0 // shadow_factor
+	);
+
+	// POT SER QUE L'ORDRE DELS GB NO SIGUI CORRECTE, NO ESTIC SEGURA
+	vec4 gb0_color = texture(u_gb0_texture, v_uv);
+	vec4 gb1_color = texture(u_gb1_texture, v_uv);
+	vec4 gb2_color = texture(u_gb2_texture, v_uv);
+	vec4 gb3_color = texture(u_gb3_texture, v_uv);
+
+	vec2 uv = v_uv;
+	float depth = texture( u_depth_texture, uv ).x;
+	vec4 screen_pos = vec4(uv.x*2.0-1.0, uv.y*2.0-1.0, depth*2.0-1.0, 1.0);
+	vec4 proj_worldpos = u_inverse_viewprojection * screen_pos;
+	LightComp.world_position = proj_worldpos.xyz / proj_worldpos.w;
+
+	LightComp.N = normalize(gb1_color.xyz * 2.0 - vec3(1.0)); // PASAMOS DE [0, 1] A [-1, 1]
+
+	vec4 color = vec4(gb0_color.xyz, 1.0);
+
+	if (u_gamma == 1)
+		color.xyz = degamma(color.xyz);
+
+	vec3 light = vec3(u_ambient_light);
+
+	// Point
+	if (u_light_type == 1){
+		computeL_point(LightComp);
+	}
+
+	// Spot
+	else if (u_light_type == 2){
+		computeL_point(LightComp);
+		computeSpotFactor(LightComp);
+	}
+
+	// Directional
+	else if (u_light_type == 3){
+		computeL_directional(LightComp);
+	}
+
+	computeNdotL(LightComp);
+
+	if (u_light_cast_shadows == 1){
+		testShadowMap(LightComp);
+	}
+	computeAttenuation(LightComp);
+	light += u_light_color * LightComp.NdotL * LightComp.att_factor * LightComp.spot_factor * LightComp.shadow_factor;
+
+	// Apply other textures
+	// Emissive
+	light += gb2_color.xyz;
+
+	// Occlusion
+	// Occlusion value is only in one coordinate
+	light *= gb3_color.x;
+
+	color.xyz *= light;
+
+	if (u_gamma == 1)
+		color.xyz = gamma(color.xyz);
+
+	FragColor = color;
+}
+
+//------------------------------------------------------------
+\deferred_pbr.fs
 #version 330 core
 
 in vec2 v_uv;
@@ -753,103 +874,8 @@ uniform float u_light_shadow_bias;
 
 out vec4 FragColor;
 
-// Save computations related to light
-struct LightStruct{
-	vec3 L;
-	vec3 D;
-	vec3 N;
-
-	vec3 world_position;
-
-	float NdotL;
-	float LdotD;
-	float light_dist;
-
-	float spot_factor;
-	float att_factor;
-	float shadow_factor;
-}LightComp;
-
-// --- Functions ---
-
-// L vector for point and spot lights
-void computeL_point(inout LightStruct lc){
-	// Distance from current point to light
-	vec3 L = u_light_position - lc.world_position;
-	// Modulus			
-	lc.light_dist = length(L);
-	// Normalize L
-	lc.L = L/lc.light_dist;
-}
-
-// L vector for directional light
-void computeL_directional(inout LightStruct lc){
-	// All points take the same light direction
-	vec3 L = u_light_direction;
-	lc.light_dist = length(L);
-	lc.L = L/lc.light_dist;
-}
-
-void computeNdotL(inout LightStruct lc){
-	lc.NdotL = clamp(dot(lc.L,lc.N), 0.0, 1.0);
-}
-
-void computeSpotFactor(inout LightStruct lc){
-	lc.D = normalize(u_light_direction);
-	lc.LdotD = dot(-lc.L, lc.D);
-	// check if point inside the spotlight
-	if (lc.LdotD >= u_light_cone_cos){
-		// compute how much it is inside
-		lc.spot_factor = pow(lc.LdotD, u_light_cone_exp);	
-	}
-	else{
-		lc.spot_factor = 0.0;
-	}	
-}
-
-void computeAttenuation(inout LightStruct lc){
-	float att_factor = u_light_max_distance - lc.light_dist;
-	att_factor /= u_light_max_distance;
-	att_factor = max(att_factor, 0.0);
-	// apply quadratic attenuation
-	lc.att_factor = pow(att_factor,2);
-}
-
-void testShadowMap(inout LightStruct lc){
-	//project our 3D position to the shadowmap
-	vec4 proj_pos = u_light_shadowmap_vpm * vec4(lc.world_position, 1.0);
-	
-	//from homogeneus space to clip space
-	vec2 shadow_uv = proj_pos.xy / proj_pos.w;
-	
-	//from clip space to uv space
-	shadow_uv = shadow_uv * 0.5 + vec2(0.5);
-		
-	//get point depth [-1 .. +1] in non-linear space
-	float real_depth = (proj_pos.z - u_light_shadow_bias) / 
-	proj_pos.w;
-	
-	//normalize from [-1..+1] to [0..+1] still non-linear
-	real_depth = real_depth * 0.5 + 0.5;
-	
-	//read depth from depth buffer in [0..+1] non-linear
-	float shadow_depth = texture( u_light_shadowmap, shadow_uv).x;
-	
-	//compute final shadow factor by comparing
-	lc.shadow_factor = 1.0;
-	
-	//we can compare them, even if they are not linear
-	if( shadow_depth < real_depth )
-		lc.shadow_factor = 0.0;
-		
-	//We must see if it is outside the sides
-	if( shadow_uv.x < 0.0 || shadow_uv.x > 1.0 ||shadow_uv.y < 0.0 || shadow_uv.y > 1.0 )
-		lc.shadow_factor = 1.0;
-
-	//it is before near or behind far plane
-	if(real_depth < 0.0 || real_depth > 1.0)
-		lc.shadow_factor = 1.0;
-}
+#include degamma
+#include light_functions_multi
 
 void main()
 {
@@ -884,6 +910,8 @@ void main()
 	LightComp.N = normalize(gb1_color.xyz * 2.0 - vec3(1.0)); // PASAMOS DE [0, 1] A [-1, 1]
 
 	vec4 color = vec4(gb0_color.xyz, 1.0);
+
+	color.xyz = degamma(color.xyz);
 
 	vec3 light = vec3(u_ambient_light);
 
@@ -921,11 +949,10 @@ void main()
 
 	color.xyz *= light;
 
+	color.xyz = gamma(color.xyz);
+
 	FragColor = color;
 }
-
-
-
 //------------------------------------------------------------
 \multi.fs
 

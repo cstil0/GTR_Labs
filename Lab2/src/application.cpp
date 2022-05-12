@@ -107,9 +107,10 @@ void Application::render(void)
 	// Use the renderCalls function to render the scene with sorted objects
 	renderer->renderScene_RenderCalls(scene, camera);
 
+
 	//Draw the floor grid, helpful to have a reference point
-	if(render_debug)
-		drawGrid();
+	/*if(render_debug)
+		drawGrid();*/
 
     glDisable(GL_DEPTH_TEST);
     //render anything in the gui after this
@@ -251,6 +252,7 @@ void Application::renderDebugGUI(void)
 	ImGui::ColorEdit3("Ambient Light", scene->ambient_light.v);
 	ImGui::Combo("Lights shader", &scene->typeOfRender, "SINGLEPASS\0MULTIPASS", 2);// , GTR::Scene::eRenderPipeline::MULTIPASS));
 	ImGui::Combo("Pipeline", (int*)&renderer->pipeline, "FORWARD\0DEFERRED", 2);
+	ImGui::Checkbox("Gamma", &renderer->gamma);
 	
 	if (ImGui::TreeNode("Debug Tools")) {
 		renderer->renderInMenu();

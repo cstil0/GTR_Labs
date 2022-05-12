@@ -34,6 +34,8 @@ GTR::Renderer::Renderer()
 
 	gbuffers_fbo = NULL;
 	pipeline = FORWARD;
+
+	gamma = true;
 }
 
 // --- Rendercalls manager functions ---
@@ -306,7 +308,6 @@ void Renderer::showGBuffers(int width, int height, Camera* camera) {
 	glViewport(width * fst_row_size, height * fst_row_size, width * fst_row_size, height * fst_row_size);
 	gbuffers_fbo->color_textures[0]->toViewport();
 
-
 	glViewport(0, height*snd_row_pos, width * snd_row_size, height * snd_row_size);
 	gbuffers_fbo->color_textures[1]->toViewport();
 
@@ -554,6 +555,16 @@ void GTR::Renderer::renderMeshWithMaterialToGBuffers(const Matrix44 model, Mesh*
 	shader->setUniform("u_time", t);
 
 	shader->setUniform("u_color", material->color);
+
+	Texture* emissive_texture = NULL;
+	emissive_texture = material->emissive_texture.texture;
+
+	if (emissive_texture)
+		shader->setUniform("u_emissive_texture", emissive_texture, 1);
+	// black texture will not add additional light
+	else
+		shader->setUniform("u_emissive_texture", Texture::getBlackTexture(), 1);
+
 	// pass textures to the shader
 	setTextures(material, shader);
 
@@ -711,7 +722,6 @@ void GTR::Renderer::renderDeferred(Camera* camera)
 	shader->setUniform("u_ambient_light", scene->ambient_light);
 	shader->setUniform("u_gb0_texture", gbuffers_fbo->color_textures[0], 0);
 	shader->setUniform("u_gb1_texture", gbuffers_fbo->color_textures[1], 1);
-	shader->setUniform("u_gb2_texture", gbuffers_fbo->color_textures[2], 2);
 	shader->setUniform("u_gb3_texture", gbuffers_fbo->color_textures[3], 3);
 	shader->setUniform("u_depth_texture", gbuffers_fbo->depth_texture, 4);
 
@@ -722,6 +732,8 @@ void GTR::Renderer::renderDeferred(Camera* camera)
 	//pass the inverse window resolution, this may be useful
 	shader->setUniform("u_iRes", Vector2(1.0 / (float)width, 1.0 / (float)height));
 
+	shader->setUniform("u_gamma", gamma);
+
 	Vector3 temp_ambient = scene->ambient_light;
 
 	if (!lights.size()) {
@@ -730,6 +742,13 @@ void GTR::Renderer::renderDeferred(Camera* camera)
 	}
 
 	for (int i = 0; i < lights.size(); i++) {
+		if (i == 0)
+			shader->setUniform("u_gb2_texture", gbuffers_fbo->color_textures[2], 2);
+		else
+		{
+			//gbuffers_fbo->color_textures[2] = Texture::getBlackTexture();
+			shader->setUniform("u_gb2_texture", Texture::getBlackTexture(), 2);
+		}
 		LightEntity* light = lights[i];
 		
 		if (i == 0) {
@@ -747,9 +766,7 @@ void GTR::Renderer::renderDeferred(Camera* camera)
 			quad->render(GL_TRIANGLES);
 			//sphere->render(GL_TRIANGLES);
 
-
 		temp_ambient = Vector3(0.0, 0.0, 0.0);  // CAMBIAR AMBIENT DESPUÉS DE LA PRIMERA ITERACIÓN
-
 	}
 
 	illumination_fbo->unbind();
@@ -797,14 +814,12 @@ void Renderer::uploadLightToShader(GTR::LightEntity* light, Shader* shader, Vect
 void Renderer::setTextures(GTR::Material* material, Shader* shader) {
 	Texture* texture = NULL;
 	Texture* normal_texture = NULL;
-	Texture* emissive_texture = NULL;
 	Texture* occlusion_texture = NULL;
 	Texture* met_rough_texture = NULL;
 
 	// save textures
 	texture = material->color_texture.texture;
 	normal_texture = material->normal_texture.texture;
-	emissive_texture = material->emissive_texture.texture;
 	met_rough_texture = material->metallic_roughness_texture.texture;
 	occlusion_texture = material->occlusion_texture.texture;
 
@@ -814,12 +829,6 @@ void Renderer::setTextures(GTR::Material* material, Shader* shader) {
 	// pass textures
 	if (texture)
 		shader->setUniform("u_texture", texture, 0);
-
-	if (emissive_texture)
-		shader->setUniform("u_emissive_texture", emissive_texture, 1);
-	// black texture will not add additional light
-	else
-		shader->setUniform("u_emissive_texture", Texture::getBlackTexture(), 1);
 
 	if (occlusion_texture)
 		shader->setUniform("u_occlusion_texture", occlusion_texture, 2);
@@ -844,6 +853,9 @@ void Renderer::setTextures(GTR::Material* material, Shader* shader) {
 }
 
 void Renderer::setSinglepass_parameters(GTR::Material* material, Shader* shader, Mesh* mesh) {
+	Texture* emissive_texture = NULL;
+	emissive_texture = material->emissive_texture.texture;
+
 	//select the blending
 	if (material->alpha_mode == GTR::eAlphaMode::BLEND)
 	{
@@ -852,6 +864,12 @@ void Renderer::setSinglepass_parameters(GTR::Material* material, Shader* shader,
 	}
 	else
 		glDisable(GL_BLEND);
+
+	if (emissive_texture)
+		shader->setUniform("u_emissive_texture", emissive_texture, 1);
+	// black texture will not add additional light
+	else
+		shader->setUniform("u_emissive_texture", Texture::getBlackTexture(), 1);
 
 	// Define some variables to store lights information
 	std::vector<int> lights_type;
@@ -911,6 +929,8 @@ void Renderer::setSinglepass_parameters(GTR::Material* material, Shader* shader,
 	// Pass to the shader
 	Scene* scene = Scene::instance;
 
+	shader->setUniform("u_gamma", gamma);
+
 	shader->setUniform("u_lights_type", lights_type);
 	shader->setUniform("u_ambient_light", scene->ambient_light);
 	shader->setUniform("u_lights_position", lights_position);
@@ -945,6 +965,15 @@ void Renderer::setSinglepass_parameters(GTR::Material* material, Shader* shader,
 }
 
 void Renderer::setMultipassParameters(GTR::Material* material, Shader* shader, Mesh* mesh) {
+	Texture* emissive_texture = NULL;
+	emissive_texture = material->emissive_texture.texture;
+
+	if (emissive_texture)
+		shader->setUniform("u_emissive_texture", emissive_texture, 1);
+	// black texture will not add additional light
+	else
+		shader->setUniform("u_emissive_texture", Texture::getBlackTexture(), 1);
+
 	// paint if value is less or equal to the one in the depth buffer
 	glDepthFunc(GL_LEQUAL);
 
@@ -986,6 +1015,8 @@ void Renderer::setMultipassParameters(GTR::Material* material, Shader* shader, M
 		// we already passed first light
 		is_first = false;
 
+		shader->setUniform("u_gamma", gamma);
+
 		// Pass to the shader
 		shader->setUniform("u_light_type", light->light_type);
 		shader->setUniform("u_ambient_light", ambient_light);
@@ -1021,6 +1052,9 @@ void Renderer::setMultipassParameters(GTR::Material* material, Shader* shader, M
 
 		// Reset ambient light to add it only once
 		ambient_light = vec3(0.0, 0.0, 0.0);
+		emissive_texture = Texture::getBlackTexture();
+		shader->setUniform("u_emissive_texture", emissive_texture, 1);
+
 	}
 
 	// If no light is visible, pass only the ambient light to the shader
