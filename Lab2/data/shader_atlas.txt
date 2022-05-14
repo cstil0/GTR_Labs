@@ -51,6 +51,12 @@ vec3 gamma(vec3 c)
 
 \light_functions_multi
 
+// estas variables solo estan en multipass, pero como deferred también lee de 
+// aquí las definimos para que no pete la función computeN aunque deferred no la necesite 
+in vec3 v_normal;
+uniform sampler2D u_normal_texture;
+uniform int u_normal_text_bool;
+
 // Save computations related to light
 struct LightStruct{
 	vec3 L;
@@ -84,6 +90,18 @@ void computeL_directional(inout LightStruct lc){
 	vec3 L = u_light_direction;
 	lc.light_dist = length(L);
 	lc.L = L/lc.light_dist;
+}
+
+void computeN(inout LightStruct lc){
+	vec3 V = normalize(u_camera_position - lc.world_position);
+	vec3 normal_pixel = texture2D( u_normal_texture, v_uv ).xyz; 
+	vec3 N = normalize(v_normal);
+	// if there is a normal texture, compute the normal according to it
+	if (u_normal_text_bool == 1)
+		lc.N = perturbNormal(N, V, v_uv, normal_pixel);
+	else
+		lc.N = N;
+	lc.N = vec3(lc.N * 0.5 + vec3(0.5));
 }
 
 void computeNdotL(inout LightStruct lc){
@@ -191,7 +209,7 @@ void computeNdotL(inout LightStruct lc){
 		lc.N = perturbNormal(N, V, v_uv, normal_pixel);
 	else
 		lc.N = N;
-
+	lc.N = vec3(lc.N * 0.5 + vec3(0.5));
 	lc.NdotL = clamp(dot(lc.L,lc.N), 0.0, 1.0);
 }
 
@@ -497,7 +515,7 @@ void main()
 
 in vec3 v_position;
 in vec3 v_world_position;
-in vec3 v_normal;
+//in vec3 v_normal;
 in vec2 v_uv;
 in vec4 v_color;
 
@@ -510,8 +528,8 @@ uniform float u_alpha_cutoff;
 uniform int u_gamma;
 
 uniform sampler2D u_texture;
-uniform int u_normal_text_bool;
-uniform sampler2D u_normal_texture;
+//uniform int u_normal_text_bool;
+//uniform sampler2D u_normal_texture;
 uniform sampler2D u_emissive_texture;
 uniform sampler2D u_occlusion_texture;
 uniform sampler2D u_met_rough_texture;
@@ -589,6 +607,7 @@ void main()
 	}
 
 	//if (LightComp.light_dist <= u_light_max_distance){
+	computeN(LightComp);
 	computeNdotL(LightComp);
 
 	if (u_light_cast_shadows == 1){
@@ -750,6 +769,7 @@ uniform float u_light_shadow_bias;
 
 out vec4 FragColor;
 
+#include normalmap_functions
 #include degamma
 #include light_functions_multi
 
