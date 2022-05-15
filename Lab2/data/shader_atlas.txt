@@ -95,13 +95,12 @@ void computeL_directional(inout LightStruct lc){
 void computeN(inout LightStruct lc){
 	vec3 V = normalize(u_camera_position - lc.world_position);
 	vec3 normal_pixel = texture2D( u_normal_texture, v_uv ).xyz; 
-	vec3 N = normalize(v_normal);
+	vec3 v_N = normalize(v_normal);
 	// if there is a normal texture, compute the normal according to it
 	if (u_normal_text_bool == 1)
-		lc.N = perturbNormal(N, V, v_uv, normal_pixel);
+		lc.N = perturbNormal(v_N, V, v_uv, normal_pixel);
 	else
-		lc.N = N;
-	lc.N = vec3(lc.N * 0.5 + vec3(0.5));
+		lc.N = v_N;
 }
 
 void computeNdotL(inout LightStruct lc){
@@ -129,6 +128,17 @@ void computeAttenuation(inout LightStruct lc){
 	lc.att_factor = pow(att_factor,2);
 }
 
+vec4 assignMapPiece(int index){
+	if (index == 0)
+		return vec4(0.5, 0.5, 0, 0);
+	else if (index == 1)
+		return vec4(0.5, 0.5, 0, 0.5);
+	else if (index == 2)
+		return vec4(0.5, 0.5, 0.5, 0);
+	else
+		return vec4(0.5, 0.5, 0.5, 0.5);
+}
+
 void testShadowMap(inout LightStruct lc){
 	//project our 3D position to the shadowmap
 	vec4 proj_pos = u_light_shadowmap_vpm * vec4(lc.world_position, 1.0);
@@ -147,7 +157,11 @@ void testShadowMap(inout LightStruct lc){
 	real_depth = real_depth * 0.5 + 0.5;
 	
 	//read depth from depth buffer in [0..+1] non-linear
-	float shadow_depth = texture( u_light_shadowmap, shadow_uv).x;
+		//read depth from depth buffer in [0..+1] non-linear
+	vec4 scale_factor = assignMapPiece(u_shadow_i);
+	//vec2 sh_uv = vec2(shadow_uv.x*0.5 + 0, shadow_uv.y*0.5 + 0.5);
+	vec2 sh_uv = vec2(shadow_uv.x*scale_factor[0] + scale_factor[2], shadow_uv.y*scale_factor[1] + scale_factor[3]);
+	float shadow_depth = texture( u_light_shadowmap, sh_uv).x;
 	
 	//compute final shadow factor by comparing
 	lc.shadow_factor = 1.0;
@@ -209,7 +223,6 @@ void computeNdotL(inout LightStruct lc){
 		lc.N = perturbNormal(N, V, v_uv, normal_pixel);
 	else
 		lc.N = N;
-	lc.N = vec3(lc.N * 0.5 + vec3(0.5));
 	lc.NdotL = clamp(dot(lc.L,lc.N), 0.0, 1.0);
 }
 
@@ -234,7 +247,18 @@ void computeAttenuation(inout LightStruct lc, int i){
 	lc.att_factor = pow(att_factor,2);
 }
 
-void testShadowMap(inout LightStruct lc, int i){
+vec4 assignMapPiece(int index){
+	if (index == 0)
+		return vec4(0.5, 0.5, 0, 0);
+	else if (index == 1)
+		return vec4(0.5, 0.5, 0, 0.5);
+	else if (index == 2)
+		return vec4(0.5, 0.5, 0.5, 0);
+	else
+		return vec4(0.5, 0.5, 0.5, 0.5);
+}
+
+void testShadowMap(inout LightStruct lc, int i, int sh_i){
 	//project our 3D position to the shadowmap
 	vec4 proj_pos = u_lights_shadowmap_vpm[i] * vec4(v_world_position,1.0);
 	
@@ -243,7 +267,7 @@ void testShadowMap(inout LightStruct lc, int i){
 	
 	//from clip space to uv space
 	shadow_uv = shadow_uv * 0.5 + vec2(0.5);
-		
+
 	//get point depth [-1 .. +1] in non-linear space
 	float real_depth = (proj_pos.z - u_lights_shadow_bias[i]) / 
 	proj_pos.w;
@@ -252,7 +276,11 @@ void testShadowMap(inout LightStruct lc, int i){
 	real_depth = real_depth * 0.5 + 0.5;
 	
 	//read depth from depth buffer in [0..+1] non-linear
-	float shadow_depth = texture( u_lights_shadowmap[i], shadow_uv).x;
+	vec4 scale_factor = assignMapPiece(sh_i);
+	//vec2 sh_uv = vec2(shadow_uv.x*0.5 + 0, shadow_uv.y*0.5 + 0.5);
+	vec2 sh_uv = vec2(shadow_uv.x*scale_factor[0] + scale_factor[2], shadow_uv.y*scale_factor[1] + scale_factor[3]);
+	float shadow_depth = texture( u_lights_shadowmap, sh_uv).x;
+	//float shadow_depth = texture( u_lights_shadowmap, shadow_uv).x;
 	
 	//compute final shadow factor by comparing
 	lc.shadow_factor = 1.0;
@@ -411,7 +439,7 @@ uniform float u_lights_cone_cos[MAX_LIGHTS];
 uniform float u_lights_cone_exp[MAX_LIGHTS];
 
 uniform int u_lights_cast_shadows[MAX_LIGHTS];
-uniform sampler2D u_lights_shadowmap[MAX_LIGHTS];
+uniform sampler2D u_lights_shadowmap;
 uniform mat4 u_lights_shadowmap_vpm[MAX_LIGHTS];
 uniform float u_lights_shadow_bias[MAX_LIGHTS];
 
@@ -427,14 +455,15 @@ void main()
 	vec4 color = u_color;
 	color *= texture( u_texture, v_uv );
 
-	if (u_gamma == 1)
-		color.xyz = degamma(color.xyz);
 
 	if(color.a < u_alpha_cutoff)
 		discard;
 
 	vec3 light = vec3(u_ambient_light);
-
+	if (u_gamma == 1)
+		color.xyz = degamma(color.xyz);
+	// index to store the number of lights casting shadows
+	int l_shadow_i = 0;
 	// Iterate lights
 	for (int i = 0; i < MAX_LIGHTS; i++) {
 		LightComp = LightStruct(
@@ -450,6 +479,7 @@ void main()
 			1.0, // attenuation factor
 			1.0 // shadow_factor
 		);
+
 		// Point
 		if (u_lights_type[i] == 1){
 			computeL_point(LightComp, i);
@@ -466,14 +496,16 @@ void main()
 			computeL_directional(LightComp, i);
 		}
 
-// didn't make it to pass multiple textures to the shader so shadowmaps are not working for singlepass
-//	if (u_lights_cast_shadows[i] == 1){
-//		testShadowMap(LightComp, i);
-//	}
+		// didn't make it to pass multiple textures to the shader so shadowmaps are not working for singlepass
+		if (u_lights_cast_shadows[i] == 1){
+			testShadowMap(LightComp, i, l_shadow_i);
+			l_shadow_i += 1;
+
+		}
 
 		computeNdotL(LightComp);
 		computeAttenuation(LightComp, i);
-		light += u_lights_color[i] * LightComp.NdotL * LightComp.att_factor * LightComp.spot_factor * LightComp.shadow_factor;
+		light += u_lights_color[i] * LightComp.NdotL * LightComp.att_factor * LightComp.spot_factor  * LightComp.shadow_factor;
 	}
 
 	// Apply other textures
@@ -507,6 +539,7 @@ void main()
 		color.xyz = texture(u_emissive_texture, v_uv).xyz;
 
 	FragColor = color;
+
 }
 
 //----------------------------------------------------------------------------------------------------------------------------
@@ -551,6 +584,7 @@ uniform int u_light_cast_shadows;
 uniform sampler2D u_light_shadowmap;
 uniform mat4 u_light_shadowmap_vpm;
 uniform float u_light_shadow_bias;
+uniform int u_shadow_i;
 
 out vec4 FragColor;
 
@@ -608,11 +642,13 @@ void main()
 
 	//if (LightComp.light_dist <= u_light_max_distance){
 	computeN(LightComp);
+
 	computeNdotL(LightComp);
 
 	if (u_light_cast_shadows == 1){
 		testShadowMap(LightComp);
 	}
+
 	computeAttenuation(LightComp);
 	light += u_light_color * LightComp.NdotL * LightComp.att_factor * LightComp.spot_factor * LightComp.shadow_factor;
 	//}
@@ -715,10 +751,8 @@ void main()
 
 	// don't need to save the alpha
 	GB0 = vec4(color.xyz, 1.0);
-	// ESTARIA BIEN ARREGLAR ESTO TAMBIÉN EN MULTI Y SINGLE PASS FORWARD
 	// to recover negative values
 	GB1 = vec4(N * 0.5 + vec3(0.5), 1.0);
-	// to make the world position go from 0 to 100 and visualize it better
 	GB2 = vec4(emissive, 1.0);
 	GB3 = vec4(occlusion, 1.0);
 
@@ -766,6 +800,8 @@ uniform int u_light_cast_shadows;
 uniform sampler2D u_light_shadowmap;
 uniform mat4 u_light_shadowmap_vpm;
 uniform float u_light_shadow_bias;
+uniform int u_shadow_i;
+
 
 out vec4 FragColor;
 
@@ -915,7 +951,6 @@ void main()
 		1.0 // shadow_factor
 	);
 
-	// POT SER QUE L'ORDRE DELS GB NO SIGUI CORRECTE, NO ESTIC SEGURA
 	vec4 gb0_color = texture(u_gb0_texture, v_uv);
 	vec4 gb1_color = texture(u_gb1_texture, v_uv);
 	vec4 gb2_color = texture(u_gb2_texture, v_uv);

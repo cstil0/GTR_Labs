@@ -77,6 +77,7 @@ namespace GTR {
 
 		// -- Shadowmap functions --
 		void showShadowmap(LightEntity* light);
+		void showShadowmapTest(Camera* camera);
 		Vector4 assignMapPiece(int width, int height, int index, int num_elements);
 		void generateShadowmap(LightEntity* light, int index);
 

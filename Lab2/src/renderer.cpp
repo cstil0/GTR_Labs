@@ -123,13 +123,13 @@ Vector4 GTR::Renderer::assignMapPiece(int width, int height, int index, int num_
 
 	//return Vector4(2048*i_col*size, 2048*i_row*size, 2048*size, 2048*size);
 	if (index == 0)
-		return Vector4(0, 0, 2048 * 0.5, 2048 * 0.5);
+		return Vector4(0, 0, width * 0.5, height * 0.5);
 	else if (index == 1)
-		return Vector4(0, 2048 * 0.5, 2048 * 0.5, 2048 * 0.5);
+		return Vector4(0, height * 0.5, width * 0.5, width * 0.5);
 	else if (index == 2)
-		return Vector4(2048 * 0.5, 0, 2048 * 0.5, 2048 * 0.5);
+		return Vector4(width * 0.5, 0, width * 0.5, height * 0.5);
 	else
-		return Vector4(2048 * 0.5, 2048 * 0.5, 2048 * 0.5, 2048 * 0.5);
+		return Vector4(width * 0.5, height * 0.5, width * 0.5, height * 0.5);
 }
 // generate the shadowmap given a light
 void GTR::Renderer::generateShadowmap(LightEntity* light, int index)
@@ -245,7 +245,8 @@ void GTR::Renderer::generateShadowmap(LightEntity* light, int index)
 			//}
 			//}
 			//if (index == 0) {
-			Vector4 piece = assignMapPiece(Application::instance->window_width, Application::instance->window_height, index, num_lights_shadows);
+			// HARCODEADO
+			Vector4 piece = assignMapPiece(2048, 2048, index, num_lights_shadows);
 			glViewport(piece.x, piece.y, piece.z, piece.w);
 
 			//}
@@ -282,6 +283,29 @@ void Renderer::showShadowmap(LightEntity* light) {
 
 	// return to default
 	glViewport(0, 0, Application::instance->window_width, Application::instance->window_height);
+	glEnable(GL_DEPTH_TEST);
+}
+
+void Renderer::showShadowmapTest(Camera* camera) {
+	// to avoid seeing the scene
+	glClearColor(0.0, 0.0, 0.0, 1.0);
+	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+
+	// ESTO SE PODRÍA USAR QUIZÁ PARA LO DEL SHADOWMAP ATLAS, PRINTAMOS EN UNA TEXTURA Y LA PONEMOS EN EL VIEWPORT
+	// ESTARIA BIEN LIMPAR UN POCO ESTOS NUMERITOS
+	// two textures
+	float fst_row_size = 0.5;
+	// three textures
+	float snd_row_size = 0.5;
+	float snd_row_pos = 1 - (fst_row_size + snd_row_size);
+
+	//glViewport(0, height * fst_row_size, width * fst_rowk_size, height * fst_row_size);
+	Shader* depth_shader = Shader::getDefaultShader("depth");
+	depth_shader->enable();
+	// set uniforms to delinearize shadowmap texture
+	depth_shader->setUniform("u_camera_nearfar", Vector2(camera->near_plane, camera->far_plane));
+	shadowmap->toViewport(depth_shader);
+
 	glEnable(GL_DEPTH_TEST);
 }
 
@@ -650,6 +674,7 @@ void GTR::Renderer::renderForward(Camera* camera)
 				renderMeshWithMaterial(rc.model, rc.mesh, rc.material, camera);
 		}
 	}
+	//showShadowmapTest(camera);
 }
 
 
@@ -736,12 +761,14 @@ void GTR::Renderer::renderDeferred(Camera* camera)
 
 	Vector3 temp_ambient = scene->ambient_light;
 
+
 	if (!lights.size()) {
 		shader->setUniform("u_light_color", Vector3());
-			quad->render(GL_TRIANGLES);
+		quad->render(GL_TRIANGLES);
 	}
-
+	bool already_painted = false;
 	for (int i = 0; i < lights.size(); i++) {
+		// emissive texture
 		if (i == 0)
 			shader->setUniform("u_gb2_texture", gbuffers_fbo->color_textures[2], 2);
 		else
@@ -758,7 +785,12 @@ void GTR::Renderer::renderDeferred(Camera* camera)
 			glBlendFunc(GL_SRC_ALPHA, GL_ONE);
 			glEnable(GL_BLEND);
 		}
-
+		if (i == 1) {
+			already_painted = true;
+		}
+		//if (i == 0) {
+		//	int n = 0;
+		//}
 		uploadLightToShader(light, shader, temp_ambient);
 		if (light->light_type == LightEntity::eTypeOfLight::DIRECTIONAL)
 			quad->render(GL_TRIANGLES);
@@ -768,6 +800,7 @@ void GTR::Renderer::renderDeferred(Camera* camera)
 
 		temp_ambient = Vector3(0.0, 0.0, 0.0);  // CAMBIAR AMBIENT DESPUÉS DE LA PRIMERA ITERACIÓN
 	}
+	already_painted = false;
 
 	illumination_fbo->unbind();
 	glDisable(GL_BLEND);
@@ -943,9 +976,9 @@ void Renderer::setSinglepass_parameters(GTR::Material* material, Shader* shader,
 	shader->setUniform("u_lights_direction", lights_direction);
 
 	shader->setUniform("u_lights_cast_shadows", lights_cast_shadows);
-	shader->setUniform("u_light_shadowmap", shadowmap, 8);
-	shader->setUniform("u_light_shadowmap_vpm", lights_shadowmap_vpm);
-	shader->setUniform("u_light_shadow_bias", lights_shadow_bias);
+	shader->setUniform("u_lights_shadowmap", shadowmap, 8);
+	shader->setUniform("u_lights_shadowmap_vpm", lights_shadowmap_vpm);
+	shader->setUniform("u_lights_shadow_bias", lights_shadow_bias);
 
 	//do the draw call that renders the mesh into the screen
 	mesh->render(GL_TRIANGLES);
@@ -989,6 +1022,7 @@ void Renderer::setMultipassParameters(GTR::Material* material, Shader* shader, M
 	// to know if we are in first iteration of a visible light, since the first light can be disabled and therefore blending will not be activated for transparent materials
 	bool is_first = true;
 
+	int lshadow_count = 0;
 	for (int i = 0; i < lights.size(); ++i) {
 		LightEntity* light = lights[i];
 
@@ -1033,11 +1067,13 @@ void Renderer::setMultipassParameters(GTR::Material* material, Shader* shader, M
 		else if (light->light_type == LightEntity::eTypeOfLight::DIRECTIONAL)
 			shader->setUniform("u_light_direction", (light->model.getTranslation() - light->target));
 
-		if (light->shadowmap && light->cast_shadows) {
+		if (light->cast_shadows) {
 			shader->setUniform("u_light_cast_shadows", 1);
 			shader->setUniform("u_light_shadowmap", shadowmap, 8);
 			shader->setUniform("u_light_shadowmap_vpm", light->light_camera->viewprojection_matrix);
 			shader->setUniform("u_light_shadow_bias", light->shadow_bias);
+			shader->setUniform("u_shadow_i", lshadow_count);
+			lshadow_count += 1;
 		}
 		else
 			shader->setUniform("u_light_cast_shadows", 0);

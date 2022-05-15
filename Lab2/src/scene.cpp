@@ -236,13 +236,16 @@ void GTR::LightEntity::renderInMenu() {
 	if (light_type == LightEntity::eTypeOfLight::SPOT) {
 		ImGui::SliderFloat("Cone Angle", &cone_angle, 0.0, 80);
 		ImGui::SliderFloat("Cone Exponential", &cone_exp, 0.0, 100);
+		ImGui::Checkbox("Shadows", &cast_shadows);
+
 	}
 	else if (light_type == LightEntity::eTypeOfLight::DIRECTIONAL){
 		ImGui::SliderFloat("Area Size", &area_size, 0.0, 2000);
 		ImGui::DragFloat3("Target", &target.x, 1, -80, 80);
+		ImGui::Checkbox("Shadows", &cast_shadows);
+
 	}
 	if (cast_shadows) {
-		ImGui::Checkbox("Shadows", &cast_shadows);
 		ImGui::SliderFloat("Shadow Bias", &shadow_bias, 0.00001, 0.5);
 	}
 #endif
