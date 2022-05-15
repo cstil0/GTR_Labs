@@ -54,6 +54,9 @@ namespace GTR {
 		Texture* shadowmap;
 		ePipeline pipeline;
 
+		Texture* screen_texture;
+		FBO* screen_fbo;
+
 		// Imgui debug parameters
 		bool show_shadowmap;
 		int debug_shadowmap;
@@ -92,6 +95,7 @@ namespace GTR {
 		void renderNode(const Matrix44& model, GTR::Node* node, Camera* camera);
 		//to render one mesh given its material and transformation matrix
 		void renderMeshWithMaterial(const Matrix44 model, Mesh* mesh, GTR::Material* material, Camera* camera);
+		//Texture* screenToTexture();
 		void renderMeshWithMaterialToGBuffers(const Matrix44 model, Mesh* mesh, GTR::Material* material, Camera* camera);
 		// to render flat objects for generating the shadowmaps
 		void renderFlatMesh(const Matrix44 model, Mesh* mesh, GTR::Material* material, Camera* camera);
@@ -100,7 +104,7 @@ namespace GTR {
 		void renderDeferred(Camera* camera);
 
 		// -- Upload to shader functions --
-		void uploadLightToShader(GTR::LightEntity* light, Shader* shader, Vector3 ambient_light);
+		void uploadLightToShader(GTR::LightEntity* light, Shader* shader, Vector3 ambient_light, int shadow_i);
 		void setTextures(GTR::Material* material, Shader* shader);
 		void setSinglepass_parameters(GTR::Material* material, Shader* shader, Mesh* mesh);
 		void setMultipassParameters(GTR::Material* material, Shader* shader, Mesh* mesh);

@@ -5,6 +5,7 @@ multi_pass basic.vs light_multi_pass.fs
 single_pass basic.vs light_single_pass.fs
 gbuffers basic.vs gbuffers.fs
 deferred quad.vs deferred.fs
+col_corr basic.vs col_corr.fs
 depth quad.vs depth.fs
 multi basic.vs multi.fs
 
@@ -129,6 +130,7 @@ void computeAttenuation(inout LightStruct lc){
 }
 
 vec4 assignMapPiece(int index){
+	// !!!!!!!!!!!!HARCODEADO
 	if (index == 0)
 		return vec4(0.5, 0.5, 0, 0);
 	else if (index == 1)
@@ -148,18 +150,12 @@ void testShadowMap(inout LightStruct lc){
 	
 	//from clip space to uv space
 	shadow_uv = shadow_uv * 0.5 + vec2(0.5);
-		
-	//get point depth [-1 .. +1] in non-linear space
-	float real_depth = (proj_pos.z - u_light_shadow_bias) / 
-	proj_pos.w;
-	
-	//normalize from [-1..+1] to [0..+1] still non-linear
-	real_depth = real_depth * 0.5 + 0.5;
+
+	float real_depth = getRealDepth(proj_pos);
 	
 	//read depth from depth buffer in [0..+1] non-linear
-		//read depth from depth buffer in [0..+1] non-linear
 	vec4 scale_factor = assignMapPiece(u_shadow_i);
-	//vec2 sh_uv = vec2(shadow_uv.x*0.5 + 0, shadow_uv.y*0.5 + 0.5);
+	//vec2 sh_uv = vec2(shadow_uv.x*0.5 + 0.5, shadow_uv.y*0.5 + 0.5);
 	vec2 sh_uv = vec2(shadow_uv.x*scale_factor[0] + scale_factor[2], shadow_uv.y*scale_factor[1] + scale_factor[3]);
 	float shadow_depth = texture( u_light_shadowmap, sh_uv).x;
 	
@@ -277,7 +273,7 @@ void testShadowMap(inout LightStruct lc, int i, int sh_i){
 	
 	//read depth from depth buffer in [0..+1] non-linear
 	vec4 scale_factor = assignMapPiece(sh_i);
-	//vec2 sh_uv = vec2(shadow_uv.x*0.5 + 0, shadow_uv.y*0.5 + 0.5);
+	//vec2 sh_uv = vec2(shadow_uv.x*0.5 + 0.5, shadow_uv.y*0.5 + 0.5);
 	vec2 sh_uv = vec2(shadow_uv.x*scale_factor[0] + scale_factor[2], shadow_uv.y*scale_factor[1] + scale_factor[3]);
 	float shadow_depth = texture( u_lights_shadowmap, sh_uv).x;
 	//float shadow_depth = texture( u_lights_shadowmap, shadow_uv).x;
@@ -462,6 +458,7 @@ void main()
 	vec3 light = vec3(u_ambient_light);
 	if (u_gamma == 1)
 		color.xyz = degamma(color.xyz);
+
 	// index to store the number of lights casting shadows
 	int l_shadow_i = 0;
 	// Iterate lights
@@ -559,6 +556,8 @@ uniform float u_alpha_cutoff;
 
 // Color correction
 uniform int u_gamma;
+uniform int u_light_is_first;
+uniform int u_light_is_last;
 
 uniform sampler2D u_texture;
 //uniform int u_normal_text_bool;
@@ -588,9 +587,18 @@ uniform int u_shadow_i;
 
 out vec4 FragColor;
 
+float getRealDepth(vec4 proj_pos){
+	//get point depth [-1 .. +1] in non-linear space
+	float real_depth = (proj_pos.z - u_light_shadow_bias) / proj_pos.w;
+	
+	//normalize from [-1..+1] to [0..+1] still non-linear
+	return real_depth * 0.5 + 0.5;
+}
+
 #include normalmap_functions
 #include degamma
 #include light_functions_multi
+
 
 void main()
 {
@@ -616,8 +624,9 @@ void main()
 	vec4 color = u_color;
 	color *= texture( u_texture, v_uv );
 
-	if (u_gamma == 1)
+	if (u_gamma == 1){
 		color.xyz = degamma(color.xyz);
+	}
 
 	if(color.a < u_alpha_cutoff)
 		discard;
@@ -665,8 +674,11 @@ void main()
 
 	color.xyz *= light;
 
-	if (u_gamma == 1)
-		color.xyz = gamma(color.xyz);
+	if (u_gamma == 1){
+		if (u_light_is_last == 1){
+			color.xyz = gamma(color.xyz);
+		}
+	}
 
 	// Debug textures
 	// Normal
@@ -755,7 +767,6 @@ void main()
 	GB1 = vec4(N * 0.5 + vec3(0.5), 1.0);
 	GB2 = vec4(emissive, 1.0);
 	GB3 = vec4(occlusion, 1.0);
-
 }
 
 //------------------------------------------------------------
@@ -785,6 +796,8 @@ uniform vec2 u_iRes;
 uniform vec3 u_ambient_light;
 
 // Color correction
+uniform int u_light_is_first;
+uniform int u_light_is_last;
 uniform int u_gamma;
 
 // Textures
@@ -805,9 +818,15 @@ uniform int u_shadow_i;
 
 out vec4 FragColor;
 
+float getRealDepth(vec4 proj_pos){
+	float depth = texture( u_depth_texture, v_uv ).x;
+	return depth;
+}
+
 #include normalmap_functions
 #include degamma
 #include light_functions_multi
+
 
 void main()
 {
@@ -843,8 +862,9 @@ void main()
 
 	vec4 color = vec4(gb0_color.xyz, 1.0);
 
-	if (u_gamma == 1)
+	if (u_gamma == 1){
 		color.xyz = degamma(color.xyz);
+	}
 
 	vec3 light = vec3(u_ambient_light);
 
@@ -869,6 +889,7 @@ void main()
 	if (u_light_cast_shadows == 1){
 		testShadowMap(LightComp);
 	}
+
 	computeAttenuation(LightComp);
 	light += u_light_color * LightComp.NdotL * LightComp.att_factor * LightComp.spot_factor * LightComp.shadow_factor;
 
@@ -882,11 +903,37 @@ void main()
 
 	color.xyz *= light;
 
-	if (u_gamma == 1)
-		color.xyz = gamma(color.xyz);
+	if (u_gamma == 1){
+		if (u_light_is_last == 1){
+			color.xyz = gamma(color.xyz);
+		}
+	}
 
 	FragColor = color;
 }
+
+//------------------------------------------------------------
+\col_corr.fs
+#version 330 core
+in vec2 v_uv;
+in vec4 v_color;
+
+uniform sampler2D u_screen_texture;
+
+
+out vec4 FragColor;
+
+vec3 gamma(vec3 c)
+{
+	return pow(c,vec3(1.0/2.2));
+}
+
+void main(){
+	vec4 color = texture(u_screen_texture, v_uv);
+	vec3 color_corr = gamma(color.xyz);
+	FragColor = vec4(color_corr, 1.0);
+	}
+
 
 //------------------------------------------------------------
 \deferred_pbr.fs
