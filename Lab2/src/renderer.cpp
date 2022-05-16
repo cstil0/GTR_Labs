@@ -281,17 +281,15 @@ void GTR::Renderer::generateScreenTexture(Mesh* mesh)
 			true);		//add depth_texture
 	}
 
-	//set the clear color (the background color)
-	Scene* scene = Scene::instance;
-	glClearColor(scene->background_color.x, scene->background_color.y, scene->background_color.z, 1.0);
-
-	// Clear the color and the depth buffer
-	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 	// take the texture from the fbo and store it in another variable
 	screen_texture = screen_fbo->color_textures[0];
 
 	screen_fbo->bind();
-	glEnable(GL_CULL_FACE);
+	//set the clear color (the background color)
+	Scene* scene = Scene::instance;
+
+	glClearColor(scene->background_color.x, scene->background_color.y, scene->background_color.z, 1.0);
+	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
 	//do the draw call that renders the mesh into the screen
 	mesh->render(GL_TRIANGLES);
@@ -889,7 +887,6 @@ void Renderer::renderFlatMesh(const Matrix44 model, Mesh* mesh, GTR::Material* m
 	// don't need blending
 	glDepthFunc(GL_LESS);
 	glDisable(GL_BLEND);
-	glEnable(GL_CULL_FACE);
 
 	mesh->render(GL_TRIANGLES);
 	//disable shader
