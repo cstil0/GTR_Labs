@@ -36,6 +36,7 @@ GTR::Renderer::Renderer()
 	pipeline = FORWARD;
 
 	gamma = true;
+	bona_nit = false;
 
 	screen_texture = NULL;
 	screen_fbo = NULL;
@@ -499,10 +500,13 @@ void Renderer::renderScene_RenderCalls(GTR::Scene* scene, Camera* camera) {
 		BaseEntity* ent = scene->entities[i];
 		if (ent->entity_type == GTR::eEntityType::LIGHT) {
 			LightEntity* light = (LightEntity*)ent;
-			if (light->visible) {
+			if (light->visible && !bona_nit) {
 				lights.push_back(light);
 				if (light->cast_shadows)
 					num_lights_shadows += 1;
+			}
+			if (bona_nit) {
+				light->visible = false;
 			}
 		}
 	}
@@ -835,7 +839,6 @@ void GTR::Renderer::renderMeshWithMaterialToGBuffers(const Matrix44 model, Mesh*
 
 	//do the draw call that renders the mesh into the screen
 
-	glEnable(GL_CULL_FACE);
 	mesh->render(GL_TRIANGLES);
 
 	//disable shader
@@ -895,6 +898,24 @@ void Renderer::renderFlatMesh(const Matrix44 model, Mesh* mesh, GTR::Material* m
 
 void GTR::Renderer::renderForward(Camera* camera)
 {
+	Scene* scene = Scene::instance;
+	if (!screen_fbo) {
+		screen_texture = new Texture();
+		screen_fbo = new FBO();
+		screen_fbo->create(Application::instance->window_width, Application::instance->window_height,
+			1, 			//three textures
+			GL_RGBA, 		//four channels
+			GL_UNSIGNED_BYTE, //1 byte
+			true);		//add depth_texture
+	}
+
+	// take the texture from the fbo and store it in another variable
+	screen_texture = screen_fbo->color_textures[0];
+
+	screen_fbo->bind();
+	glClearColor(scene->background_color.x, scene->background_color.y, scene->background_color.z, 1.0);
+	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+
 	//render rendercalls
 	for (int i = 0; i < render_calls.size(); ++i) {
 		// Instead of rendering the entities vector, render the render_calls vector
@@ -908,6 +929,19 @@ void GTR::Renderer::renderForward(Camera* camera)
 		}
 	}
 	//showShadowmapTest(camera);
+
+	screen_fbo->unbind();
+	//screen_texture->toViewport();
+
+	Shader* col_corr = Shader::Get("col_corr");
+	col_corr->enable();
+	col_corr->setUniform("u_screen_texture", screen_texture, 0);
+	Mesh* quad = Mesh::getQuad();
+	quad->render(GL_TRIANGLES);
+	col_corr->disable();
+
+
+	glEnable(GL_DEPTH_TEST);
 }
 
 
@@ -1164,7 +1198,11 @@ void Renderer::setSinglepass_parameters(GTR::Material* material, Shader* shader,
 	for (int i = 0; i < max_lights; i++) {
 		LightEntity* light;
 		// if the light is not created, pass an empty light to the shader to avoid taking trash information
-		if (i < lights.size() && lights[i]->visible)
+		int lights_size = 0;
+		if (lights.size()) {
+			lights_size = lights.size();
+		}
+		if (i < lights_size && lights[i]->visible)
 			light = lights[i];
 		else
 			light = new LightEntity();
@@ -1238,6 +1276,9 @@ void Renderer::setSinglepass_parameters(GTR::Material* material, Shader* shader,
 }
 
 void Renderer::setMultipassParameters(GTR::Material* material, Shader* shader, Mesh* mesh) {
+	Scene* scene = Scene::instance;
+
+
 	Texture* emissive_texture = NULL;
 	emissive_texture = material->emissive_texture.texture;
 
@@ -1253,14 +1294,18 @@ void Renderer::setMultipassParameters(GTR::Material* material, Shader* shader, M
 	// do a linear interpolation adding the pixel painted with the current one
 	glBlendFunc(GL_SRC_ALPHA, GL_ONE);
 
-	Scene* scene = Scene::instance;
+	//Scene* scene = Scene::instance;
 
 	Vector3 ambient_light = scene->ambient_light;
 
-	// To know if there is any light visible
-	bool any_visible = false;
 	// to know if we are in first iteration of a visible light, since the first light can be disabled and therefore blending will not be activated for transparent materials
 	bool is_first = true;
+
+	if (!lights.size()) {
+		shader->setUniform("u_ambient_light", ambient_light);
+		mesh->render(GL_TRIANGLES);
+
+	}
 
 	int lshadow_count = 0;
 	for (int i = 0; i < lights.size(); ++i) {
@@ -1284,8 +1329,6 @@ void Renderer::setMultipassParameters(GTR::Material* material, Shader* shader, M
 		else if (debug_texture != eTextureType::COMPLETE)
 			continue;
 
-		// There is at least one visible light
-		any_visible = true;
 		// we already passed first light
 
 		shader->setUniform("u_gamma", gamma);
@@ -1322,7 +1365,11 @@ void Renderer::setMultipassParameters(GTR::Material* material, Shader* shader, M
 
 		is_first = false;
 
-		generateScreenTexture(mesh);
+			//do the draw call that renders the mesh into the screen
+			mesh->render(GL_TRIANGLES);
+
+			//generateScreenTexture(mesh);
+		}
 
 		// Activate blending again for the rest of lights to do the interpolation
 		glEnable(GL_BLEND);
@@ -1332,15 +1379,10 @@ void Renderer::setMultipassParameters(GTR::Material* material, Shader* shader, M
 		ambient_light = vec3(0.0, 0.0, 0.0);
 		emissive_texture = Texture::getBlackTexture();
 		shader->setUniform("u_emissive_texture", emissive_texture, 1);
-	}
-
-	// If no light is visible, pass only the ambient light to the shader
-	if (any_visible == false) {
-		shader->setUniform("u_ambient_light", ambient_light);
-	}
 }
 
 void GTR::Renderer::renderInMenu() {
+	ImGui::Checkbox("Bona nit", &bona_nit);
 	ImGui::Checkbox("Show Shadowmap", &show_shadowmap);
 	if (pipeline == ePipeline::DEFERRED)
 		ImGui::Checkbox("Show GBuffers", &show_buffers);

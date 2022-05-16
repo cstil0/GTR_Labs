@@ -5,7 +5,7 @@ multi_pass basic.vs light_multi_pass.fs
 single_pass basic.vs light_single_pass.fs
 gbuffers basic.vs gbuffers.fs
 deferred quad.vs deferred.fs
-col_corr basic.vs col_corr.fs
+col_corr quad.vs col_corr.fs
 depth quad.vs depth.fs
 multi basic.vs multi.fs
 
@@ -585,7 +585,8 @@ uniform mat4 u_light_shadowmap_vpm;
 uniform float u_light_shadow_bias;
 uniform int u_shadow_i;
 
-out vec4 FragColor;
+//out vec4 FragColor;
+layout(location = 0) out vec4 FinalColor;
 
 float getRealDepth(vec4 proj_pos){
 	//get point depth [-1 .. +1] in non-linear space
@@ -675,9 +676,9 @@ void main()
 	color.xyz *= light;
 
 	if (u_gamma == 1){
-		if (u_light_is_last == 1){
-			color.xyz = gamma(color.xyz);
-		}
+	//	if (u_light_is_last == 1){
+		color.xyz = gamma(color.xyz);
+		//}
 	}
 
 	// Debug textures
@@ -694,8 +695,8 @@ void main()
 	// Emissive
 	if(u_texture2show == 3)
 		color.xyz = texture(u_emissive_texture, v_uv).xyz;
-
-	FragColor = color;
+	
+	FinalColor = color;
 }
 
 // -----------------------------------------------------------
@@ -917,10 +918,11 @@ void main()
 #version 330 core
 in vec2 v_uv;
 in vec4 v_color;
+in vec3 v_position;
+in vec3 v_world_position;
+
 
 uniform sampler2D u_screen_texture;
-
-
 out vec4 FragColor;
 
 vec3 gamma(vec3 c)
@@ -929,10 +931,11 @@ vec3 gamma(vec3 c)
 }
 
 void main(){
-	vec4 color = texture(u_screen_texture, v_uv);
+	vec4 color = texture2D(u_screen_texture, v_uv);
 	vec3 color_corr = gamma(color.xyz);
-	FragColor = vec4(color_corr, 1.0);
-	}
+	//FragColor = vec4(color_corr, 1.0);
+	FragColor = color;
+}
 
 
 //------------------------------------------------------------
