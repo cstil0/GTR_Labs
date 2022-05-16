@@ -36,6 +36,9 @@ GTR::Renderer::Renderer()
 	pipeline = FORWARD;
 
 	gamma = true;
+
+	screen_texture = NULL;
+	screen_fbo = NULL;
 }
 
 // --- Rendercalls manager functions ---
@@ -187,7 +190,7 @@ void GTR::Renderer::generateShadowmap(LightEntity* light, int index)
 		fbo = new FBO();
 		// We only need to store the depth buffer
 		// !!!!!!!!!!!!!!!!HARCODEADO
-		fbo->setDepthOnly(2048*3, 2048*3);
+		fbo->setDepthOnly(2048 * 3, 2048 * 3);
 		// take the texture from the fbo and store it in another variable
 		shadowmap = fbo->depth_texture;
 	}
@@ -249,21 +252,125 @@ void GTR::Renderer::generateShadowmap(LightEntity* light, int index)
 			//}
 			//if (index == 0) {
 			//!!!!!!!!!!!!!!!!!!! HARCODEADO
-			Vector4 piece = assignMapPiece(2048*3, 2048*3, index, num_lights_shadows);
+			Vector4 piece = assignMapPiece(2048 * 3, 2048 * 3, index, num_lights_shadows);
 			glViewport(piece.x, piece.y, piece.z, piece.w);
 
 			//}
 			renderFlatMesh(rc.model, rc.mesh, rc.material, light_camera);
 		}
 	}
-	
-	glViewport(0,0,Application::instance->window_width, Application::instance->window_height);
+
+	glViewport(0, 0, Application::instance->window_width, Application::instance->window_height);
 	fbo->unbind();
 
 	// go back to default system
 	//light->fbo->unbind();
 	view_camera->enable();
 	glEnable(GL_DEPTH_TEST);
+}
+
+void GTR::Renderer::generateScreenTexture(Mesh* mesh)
+{
+	if (!screen_fbo) {
+		screen_texture = new Texture();
+		screen_fbo = new FBO();
+		screen_fbo->create(2048, 2048,
+			1, 			//three textures
+			GL_RGBA, 		//four channels
+			GL_UNSIGNED_BYTE, //1 byte
+			true);		//add depth_texture
+	}
+
+	//set the clear color (the background color)
+	Scene* scene = Scene::instance;
+	glClearColor(scene->background_color.x, scene->background_color.y, scene->background_color.z, 1.0);
+
+	// Clear the color and the depth buffer
+	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+	// take the texture from the fbo and store it in another variable
+	screen_texture = screen_fbo->color_textures[0];
+
+	screen_fbo->bind();
+	glEnable(GL_CULL_FACE);
+
+	//do the draw call that renders the mesh into the screen
+	mesh->render(GL_TRIANGLES);
+
+	screen_fbo->unbind();
+
+	screen_texture->toViewport();
+	glEnable(GL_DEPTH_TEST);
+
+
+	//// Guardamos la camara anterior para no perderla
+	//view_camera = Camera::current;
+	//// activate fbo to start painting in it and not in the screen
+	//fbo->bind();
+	////}
+
+	//Camera* light_camera = light->light_camera;
+
+	//if (light->light_type == LightEntity::eTypeOfLight::SPOT) {
+	//	// set the perspective matrix for the light
+	//	light_camera->setPerspective(light->cone_angle * 2, 1.0, 0.1, light->max_distance);
+	//	// locate and rotate the camera according to the light position, forward direction and up vector
+	//	light_camera->lookAt(light->model.getTranslation(), light->model * Vector3(0, 0, -1), light->model.rotateVector(Vector3(0, 1, 0)));
+	//}
+	//else if (light->light_type == LightEntity::eTypeOfLight::DIRECTIONAL) {
+	//	// tried to make the light follow the camera to reach all parts of the scene, but this also makes the light rotate, so it is not working
+	//	//vec3 light_cam_pos = vec3(view_camera->eye.x, view_camera->eye.y, view_camera->eye.z);
+	//	Application* app = Application::instance;
+	//	float halfarea = light->area_size / 2;
+	//	float aspect = Application::instance->window_width / (float)Application::instance->window_height;
+	//	// set orthographic matrix for the light since all rays are parallel
+	//	light_camera->setOrthographic(-halfarea, halfarea, -halfarea * aspect, halfarea * aspect, 0.1, light->max_distance);
+	//	// locate and rotate the camera
+	//	// Now, define center using the target vector since it corresponds to a point where the light is pointing
+	//	// ESTARIA BÉ CORREGIR-HO DIRECTAMENT AL SCENE
+	//	light_camera->lookAt(vec3(0.0, 0.0, 0.0) - light->model.getTranslation(), light->target, vec3(0.0, 0.0, 0.0) - light->model.rotateVector(Vector3(0, 1, 0)));
+	//}
+
+	//light_camera->enable();
+
+	//// clear depth buffer to avoid ghosting artifacts only at first light
+	//if (index == 0)
+	//	glClear(GL_DEPTH_BUFFER_BIT);
+
+	//// paint all rendercalls
+	//for (int i = 0; i < render_calls.size(); i++) {
+	//	RenderCall& rc = render_calls[i];
+	//	// transparent materials do not cast shadows
+	//	if (rc.material->alpha_mode == eAlphaMode::BLEND)
+	//		continue;
+	//	// render if the node is inside the frustum of the new camera
+	//	if (light_camera->testBoxInFrustum(rc.world_bounding.center, rc.world_bounding.halfsize)) {
+	//		//if (Scene::instance->typeOfRender == Scene::eRenderPipeline::SINGLEPASS){
+	//		//if (light->light_type == LightEntity::eTypeOfLight::SPOT) {
+	//		//	glViewport(0, 0, 1024, 1024);
+	//		//}
+	//		//else if (light->light_type == LightEntity::eTypeOfLight::DIRECTIONAL) {
+	//		//	glViewport(1024, 0, 1024, 1024);
+	//		//	//glViewport(0, 0, 1024, 1024);
+
+	//		//}
+	//		//}
+	//		//if (index == 0) {
+	//		//!!!!!!!!!!!!!!!!!!! HARCODEADO
+	//		Vector4 piece = assignMapPiece(2048 * 3, 2048 * 3, index, num_lights_shadows);
+	//		glViewport(piece.x, piece.y, piece.z, piece.w);
+
+	//		//}
+	//		renderFlatMesh(rc.model, rc.mesh, rc.material, light_camera);
+	//	}
+	//}
+
+	//glViewport(0, 0, Application::instance->window_width, Application::instance->window_height);
+	//fbo->unbind();
+
+	//// go back to default system
+	////light->fbo->unbind();
+	//view_camera->enable();
+	//glEnable(GL_DEPTH_TEST);
 }
 
 // to show the shadowmap for debugging purposes
@@ -729,6 +836,8 @@ void GTR::Renderer::renderMeshWithMaterialToGBuffers(const Matrix44 model, Mesh*
 	//}
 
 	//do the draw call that renders the mesh into the screen
+
+	glEnable(GL_CULL_FACE);
 	mesh->render(GL_TRIANGLES);
 
 	//disable shader
@@ -737,6 +846,7 @@ void GTR::Renderer::renderMeshWithMaterialToGBuffers(const Matrix44 model, Mesh*
 	//set the render state as it was before to avoid problems with future renders
 	glDisable(GL_BLEND);
 	glDepthFunc(GL_LESS);
+
 
 }
 
@@ -779,6 +889,7 @@ void Renderer::renderFlatMesh(const Matrix44 model, Mesh* mesh, GTR::Material* m
 	// don't need blending
 	glDepthFunc(GL_LESS);
 	glDisable(GL_BLEND);
+	glEnable(GL_CULL_FACE);
 
 	mesh->render(GL_TRIANGLES);
 	//disable shader
@@ -886,6 +997,7 @@ void GTR::Renderer::renderDeferred(Camera* camera)
 
 	Vector3 temp_ambient = scene->ambient_light;
 
+	glEnable(GL_CULL_FACE);
 
 	if (!lights.size()) {
 		shader->setUniform("u_light_color", Vector3());
@@ -941,6 +1053,7 @@ void GTR::Renderer::renderDeferred(Camera* camera)
 		showGBuffers(Application::instance->window_width, Application::instance->window_height, camera);
 
 	glEnable(GL_DEPTH_TEST);
+	glEnable(GL_CULL_FACE);
 }
 
 // -- Upload to shader functions --
@@ -1109,6 +1222,7 @@ void Renderer::setSinglepass_parameters(GTR::Material* material, Shader* shader,
 	shader->setUniform("u_lights_shadowmap_vpm", lights_shadowmap_vpm);
 	shader->setUniform("u_lights_shadow_bias", lights_shadow_bias);
 
+	glEnable(GL_CULL_FACE);
 	//do the draw call that renders the mesh into the screen
 	mesh->render(GL_TRIANGLES);
 
@@ -1210,8 +1324,8 @@ void Renderer::setMultipassParameters(GTR::Material* material, Shader* shader, M
 			shader->setUniform("u_light_cast_shadows", 0);
 
 		is_first = false;
-		//do the draw call that renders the mesh into the screen
-		mesh->render(GL_TRIANGLES);
+
+		generateScreenTexture(mesh);
 
 		// Activate blending again for the rest of lights to do the interpolation
 		glEnable(GL_BLEND);

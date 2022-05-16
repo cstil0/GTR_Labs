@@ -80,9 +80,12 @@ namespace GTR {
 
 		// -- Shadowmap functions --
 		void showShadowmap(LightEntity* light);
+		// BORRAR
 		void showShadowmapTest(Camera* camera);
 		Vector4 assignMapPiece(int width, int height, int index, int num_elements);
 		void generateShadowmap(LightEntity* light, int index);
+
+		void generateScreenTexture(Mesh* mesh);
 
 		// -- Render functions --
 		//renders several elements of the scene
