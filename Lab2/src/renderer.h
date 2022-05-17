@@ -28,6 +28,12 @@ namespace GTR {
 	// Separating the render from anything else makes the code cleaner
 	class Renderer
 	{
+		// CREO QUE ESTO ESTARIA MAS BONITO EN RENDERER... NO SE QUE HACE AQUÍ
+		enum eRenderPipeline {
+			SINGLEPASS,
+			MULTIPASS
+		};
+
 		enum eTextureType {
 			COMPLETE,
 			NORMAL,
@@ -53,6 +59,7 @@ namespace GTR {
 		FBO* fbo;
 		Texture* shadowmap;
 		ePipeline pipeline;
+		int typeOfRender;
 
 		Texture* screen_texture;
 		FBO* screen_fbo;
@@ -68,7 +75,7 @@ namespace GTR {
 
 		// color correction
 		bool gamma;
-		bool bona_nit; // true-> todo apagado (sin luces), false-> luces visibles
+		//bool bona_nit; // true-> todo apagado (sin luces), false-> luces visibles
 
 		Renderer();
 
@@ -85,7 +92,7 @@ namespace GTR {
 		void showShadowmapTest(Camera* camera);
 		Vector4 assignMapPiece(int width, int height, int index, int num_elements);
 		void generateShadowmap(LightEntity* light, int index);
-
+		// BORRAR
 		void generateScreenTexture(Mesh* mesh);
 
 		// -- Render functions --
@@ -113,6 +120,8 @@ namespace GTR {
 		void setSinglepass_parameters(GTR::Material* material, Shader* shader, Mesh* mesh);
 		void setMultipassParameters(GTR::Material* material, Shader* shader, Mesh* mesh);
 
+		void setLightsVisible();
+		void setLightsInvisible();
 		void renderInMenu();
 
 		// TO DO:

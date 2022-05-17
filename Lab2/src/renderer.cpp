@@ -34,9 +34,11 @@ GTR::Renderer::Renderer()
 
 	gbuffers_fbo = NULL;
 	pipeline = FORWARD;
+	typeOfRender = eRenderPipeline::MULTIPASS;
+
 
 	gamma = true;
-	bona_nit = false;
+	//bona_nit = false;
 
 	screen_texture = NULL;
 	screen_fbo = NULL;
@@ -500,14 +502,14 @@ void Renderer::renderScene_RenderCalls(GTR::Scene* scene, Camera* camera) {
 		BaseEntity* ent = scene->entities[i];
 		if (ent->entity_type == GTR::eEntityType::LIGHT) {
 			LightEntity* light = (LightEntity*)ent;
-			if (light->visible && !bona_nit) {
+			if (light->visible) {
 				lights.push_back(light);
 				if (light->cast_shadows)
 					num_lights_shadows += 1;
 			}
-			if (bona_nit) {
-				light->visible = false;
-			}
+			//if (bona_nit) {
+			//	light->visible = false;
+			//}
 		}
 	}
 
@@ -609,9 +611,9 @@ void Renderer::renderMeshWithMaterial(const Matrix44 model, Mesh* mesh, GTR::Mat
 
 	//chose a shader
 	Scene* scene = Scene::instance;
-	if (scene->typeOfRender == Scene::eRenderPipeline::SINGLEPASS)
+	if (typeOfRender == eRenderPipeline::SINGLEPASS)
 		shader = Shader::Get("single_pass");
-	else if (scene->typeOfRender == Scene::eRenderPipeline::MULTIPASS)
+	else if (typeOfRender == eRenderPipeline::MULTIPASS)
 		shader = Shader::Get("multi_pass");
 
 	assert(glGetError() == GL_NO_ERROR);
@@ -636,12 +638,12 @@ void Renderer::renderMeshWithMaterial(const Matrix44 model, Mesh* mesh, GTR::Mat
 	shader->setUniform("u_alpha_cutoff", material->alpha_mode == GTR::eAlphaMode::MASK ? material->alpha_cutoff : 0);
 
 	// pass light parameters
-	if (scene->typeOfRender == Scene::eRenderPipeline::SINGLEPASS) {
+	if (typeOfRender == eRenderPipeline::SINGLEPASS) {
 		setSinglepass_parameters(material, shader, mesh);
 		//disable shader
 		shader->disable();
 	}
-	else if (scene->typeOfRender == Scene::eRenderPipeline::MULTIPASS) {
+	else if (typeOfRender == eRenderPipeline::MULTIPASS) {
 		setMultipassParameters(material, shader, mesh);
 		shader->disable();
 
@@ -909,13 +911,14 @@ void GTR::Renderer::renderForward(Camera* camera)
 			true);		//add depth_texture
 	}
 
-	// take the texture from the fbo and store it in another variable
-	screen_texture = screen_fbo->color_textures[0];
+	if (typeOfRender == eRenderPipeline::MULTIPASS) {
+		// take the texture from the fbo and store it in another variable
+		screen_texture = screen_fbo->color_textures[0];
 
-	screen_fbo->bind();
-	glClearColor(scene->background_color.x, scene->background_color.y, scene->background_color.z, 1.0);
-	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-
+		screen_fbo->bind();
+		glClearColor(scene->background_color.x, scene->background_color.y, scene->background_color.z, 1.0);
+		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+	}
 	//render rendercalls
 	for (int i = 0; i < render_calls.size(); ++i) {
 		// Instead of rendering the entities vector, render the render_calls vector
@@ -930,18 +933,27 @@ void GTR::Renderer::renderForward(Camera* camera)
 	}
 	//showShadowmapTest(camera);
 
-	screen_fbo->unbind();
-	//screen_texture->toViewport();
+	// gamma correction needs to be applyied after rendering all lights
+	if (typeOfRender == eRenderPipeline::MULTIPASS) {
+		screen_fbo->unbind();
+		//screen_texture->toViewport();
 
-	Shader* col_corr = Shader::Get("col_corr");
-	col_corr->enable();
-	col_corr->setUniform("u_screen_texture", screen_texture, 0);
-	Mesh* quad = Mesh::getQuad();
-	quad->render(GL_TRIANGLES);
-	col_corr->disable();
+		Shader* col_corr = Shader::Get("col_corr");
+		col_corr->enable();
+		col_corr->setUniform("u_screen_texture", screen_texture, 0);
+		float lumwhite2 = 1.0;
+		col_corr->setUniform("u_lumwhite2", lumwhite2);
+		float average_lum = 50;
+		col_corr->setUniform("u_average_lum", average_lum);
+		//col_corr->setUniform("u_scale", 1);
+		
+		Mesh* quad = Mesh::getQuad();
+		quad->render(GL_TRIANGLES);
+		col_corr->disable();
 
 
-	glEnable(GL_DEPTH_TEST);
+		glEnable(GL_DEPTH_TEST);
+	}
 }
 
 
@@ -997,7 +1009,11 @@ void GTR::Renderer::renderDeferred(Camera* camera)
 
 	gbuffers_fbo->unbind();
 
+	//screen_texture = illumination_fbo->color_textures[0];
+
 	illumination_fbo->bind();
+	glClearColor(scene->background_color.x, scene->background_color.y, scene->background_color.z, 1.0);
+	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
 	// NO TESTEAMOS DEPTH POR QUE YA HEMOS RENDERIZADO LAS TEXTURAS CON LAS OCLUSIONES
 	// ADEM�S LA ILLUMINATION FBO NO TIENE NADA EN DEPTH AHORA
@@ -1016,6 +1032,7 @@ void GTR::Renderer::renderDeferred(Camera* camera)
 	shader->setUniform("u_gb1_texture", gbuffers_fbo->color_textures[1], 1);
 	shader->setUniform("u_gb3_texture", gbuffers_fbo->color_textures[3], 3);
 	shader->setUniform("u_depth_texture", gbuffers_fbo->depth_texture, 4);
+
 
 	//pass the inverse projection of the camera to reconstruct world pos.
 	Matrix44 inv_vp = camera->viewprojection_matrix;
@@ -1074,10 +1091,46 @@ void GTR::Renderer::renderDeferred(Camera* camera)
 	}
 
 	illumination_fbo->unbind();
+	//gbuffers_fbo->depth_texture->toViewport();
+
 	glDisable(GL_BLEND);
+
+	//if (!screen_fbo) {
+	//	screen_texture = new Texture();
+	//	screen_fbo = new FBO();
+	//	screen_fbo->create(Application::instance->window_width, Application::instance->window_height,
+	//		1, 			//three textures
+	//		GL_RGBA, 		//four channels
+	//		GL_UNSIGNED_BYTE, //1 byte
+	//		true);		//add depth_texture
+	//}
+
+	//// take the texture from the fbo and store it in another variable
+	//screen_texture = screen_fbo->color_textures[0];
+
+	//screen_fbo->bind();
+
+	Shader* col_corr = Shader::Get("col_corr");
+	col_corr->enable();
+	col_corr->setUniform("u_screen_texture", illumination_fbo->color_textures[0], 0);
+	
+	//col_corr->setUniform("u_lumwhite2", 1);
+	//col_corr->setUniform("u_average_lum", 1);
+	//col_corr->setUniform("u_scale", 1);
+	//col_corr->setUniform("u_screen_texture", screen_texture, 0);
+	Mesh* quad_final = Mesh::getQuad();
+	quad_final->render(GL_TRIANGLES);
+	col_corr->disable();
+
+	glViewport(0,0,256,256);
 	illumination_fbo->color_textures[0]->toViewport();
+	glViewport(0, 0, Application::instance->window_width, Application::instance->window_height);
+	//illumination_fbo->color_textures[0]->toViewport();
+
+	//screen_texture->toViewport();
 	//gbuffers_fbo->color_textures[1]->getWhiteTexture();
-	//gbuffers_fbo->color_textures[1]->toViewport();
+
+	//screen_fbo->unbind();
 	
 
 	if (show_buffers)
@@ -1090,6 +1143,8 @@ void GTR::Renderer::renderDeferred(Camera* camera)
 // -- Upload to shader functions --
 
 void Renderer::uploadLightToShader(GTR::LightEntity* light, Shader* shader, Vector3 ambient_light, int shadow_i) {
+	//shader->setUniform("u_camera_nearfar", Vector2(light->light_camera->near_plane, light->light_camera->far_plane));
+	
 	shader->setUniform("u_light_type", light->light_type);
 	shader->setUniform("u_ambient_light", ambient_light);
 	shader->setUniform("u_light_position", light->model.getTranslation());
@@ -1225,11 +1280,11 @@ void Renderer::setSinglepass_parameters(GTR::Material* material, Shader* shader,
 			lights_direction.push_back(vec3(0.0, 0.0, 0.0));
 		}
 
+		lights_shadow_bias.push_back(light->shadow_bias);
 		if (light->cast_shadows) {
 			lights_cast_shadows.push_back(1);
 			//lights_shadowmap.push_back(light->shadowmap);
 			lights_shadowmap_vpm.push_back(light->light_camera->viewprojection_matrix);
-			lights_shadow_bias.push_back(light->shadow_bias);
 		}
 		else {
 			lights_cast_shadows.push_back(0);
@@ -1241,6 +1296,9 @@ void Renderer::setSinglepass_parameters(GTR::Material* material, Shader* shader,
 
 	shader->setUniform("u_gamma", gamma);
 
+	if (!lights.size()) {
+		int t = 0;
+	}
 	shader->setUniform("u_lights_type", lights_type);
 	shader->setUniform("u_ambient_light", scene->ambient_light);
 	shader->setUniform("u_lights_position", lights_position);
@@ -1250,16 +1308,20 @@ void Renderer::setSinglepass_parameters(GTR::Material* material, Shader* shader,
 	// Use the cosine to compare it directly to NdotL
 	shader->setUniform("u_lights_cone_cos", lights_cone_cos);
 	shader->setUniform("u_lights_cone_exp", lights_cone_exp);
+	//if(lights_direction.size())
 	shader->setUniform("u_lights_direction", lights_direction);
 
 	shader->setUniform("u_lights_cast_shadows", lights_cast_shadows);
 	shader->setUniform("u_lights_shadowmap", shadowmap, 8);
-	shader->setUniform("u_lights_shadowmap_vpm", lights_shadowmap_vpm);
+	if (lights_shadowmap_vpm.size())
+		shader->setUniform("u_lights_shadowmap_vpm", lights_shadowmap_vpm);
 	shader->setUniform("u_lights_shadow_bias", lights_shadow_bias);
 
 	glEnable(GL_CULL_FACE);
 	//do the draw call that renders the mesh into the screen
 	mesh->render(GL_TRIANGLES);
+	// show screen_texture since we are always drawing there
+	//screen_texture->toViewport();
 
 	// clear all vectors
 	lights_type.clear();
@@ -1365,11 +1427,10 @@ void Renderer::setMultipassParameters(GTR::Material* material, Shader* shader, M
 
 		is_first = false;
 
-			//do the draw call that renders the mesh into the screen
-			mesh->render(GL_TRIANGLES);
+		//do the draw call that renders the mesh into the screen
+		mesh->render(GL_TRIANGLES);
 
-			//generateScreenTexture(mesh);
-		}
+		//generateScreenTexture(mesh);
 
 		// Activate blending again for the rest of lights to do the interpolation
 		glEnable(GL_BLEND);
@@ -1379,10 +1440,34 @@ void Renderer::setMultipassParameters(GTR::Material* material, Shader* shader, M
 		ambient_light = vec3(0.0, 0.0, 0.0);
 		emissive_texture = Texture::getBlackTexture();
 		shader->setUniform("u_emissive_texture", emissive_texture, 1);
+	}
+}
+
+void GTR::Renderer::setLightsVisible()
+{
+	Scene* scene = Scene::instance;
+	for (int i = 0; i < scene->entities.size(); i++) {
+		BaseEntity* ent = scene->entities[i];
+		if (ent->entity_type == GTR::eEntityType::LIGHT) {
+			LightEntity* light = (LightEntity*)ent;
+			light->visible = true;
+		}
+	}
+}
+
+void GTR::Renderer::setLightsInvisible()
+{
+	for (int i = 0; i < lights.size(); i++) {
+		lights[i]->visible = false;
+	}
 }
 
 void GTR::Renderer::renderInMenu() {
-	ImGui::Checkbox("Bona nit", &bona_nit);
+	if (ImGui::Button("Bona Nit"))
+		setLightsInvisible();
+	if (ImGui::Button("Bon Dia"))
+		setLightsVisible();
+	//ImGui::Checkbox("Bona nit", &bona_nit);
 	ImGui::Checkbox("Show Shadowmap", &show_shadowmap);
 	if (pipeline == ePipeline::DEFERRED)
 		ImGui::Checkbox("Show GBuffers", &show_buffers);

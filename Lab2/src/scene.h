@@ -94,11 +94,6 @@ namespace GTR {
 	class Scene
 	{
 	public:
-		// CREO QUE ESTO ESTARIA MAS BONITO EN RENDERER... NO SE QUE HACE AQUÍ
-		enum eRenderPipeline {
-			SINGLEPASS,
-			MULTIPASS
-		};
 
 		static Scene* instance;
 
@@ -106,7 +101,6 @@ namespace GTR {
 		Vector3 ambient_light;
 		Camera main_camera;
 
-		int typeOfRender;
 
 		Scene();
 

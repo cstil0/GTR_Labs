@@ -11,7 +11,6 @@ GTR::Scene::Scene()
 {
 	instance = this;
 	// Start with singlepass
-	typeOfRender = Scene::eRenderPipeline::MULTIPASS;
 }
 
 void GTR::Scene::clear()

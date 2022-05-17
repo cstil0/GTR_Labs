@@ -250,7 +250,7 @@ void Application::renderDebugGUI(void)
 	ImGui::Checkbox("Wireframe", &render_wireframe);
 	ImGui::ColorEdit3("BG color", scene->background_color.v);
 	ImGui::ColorEdit3("Ambient Light", scene->ambient_light.v);
-	ImGui::Combo("Lights shader", &scene->typeOfRender, "SINGLEPASS\0MULTIPASS", 2);// , GTR::Scene::eRenderPipeline::MULTIPASS));
+	ImGui::Combo("Lights shader", &renderer->typeOfRender, "SINGLEPASS\0MULTIPASS", 2);// , GTR::Scene::eRenderPipeline::MULTIPASS));
 	ImGui::Combo("Pipeline", (int*)&renderer->pipeline, "FORWARD\0DEFERRED", 2);
 	ImGui::Checkbox("Gamma", &renderer->gamma);
 	

@@ -173,6 +173,7 @@ void testShadowMap(inout LightStruct lc){
 	//it is before near or behind far plane
 	if(real_depth < 0.0 || real_depth > 1.0)
 		lc.shadow_factor = 1.0;
+
 }
 
 \light_functions_single
@@ -556,6 +557,7 @@ uniform float u_alpha_cutoff;
 
 // Color correction
 uniform int u_gamma;
+// !!!!!!!!!!BORRAR
 uniform int u_light_is_first;
 uniform int u_light_is_last;
 
@@ -675,11 +677,11 @@ void main()
 
 	color.xyz *= light;
 
-	if (u_gamma == 1){
+	//if (u_gamma == 1){
 	//	if (u_light_is_last == 1){
-		color.xyz = gamma(color.xyz);
+		//color.xyz = gamma(color.xyz);
 		//}
-	}
+	//}
 
 	// Debug textures
 	// Normal
@@ -781,6 +783,8 @@ uniform vec4 u_color;
 uniform float u_time;
 uniform float u_alpha_cutoff;
 
+uniform vec2 u_camera_nearfar;
+
 // YA NO TENEMOS TEXTURAS DEL MATERIAL -- AHORA TENEMOS LAS TEXTURAS DEL GBUFFER
 uniform sampler2D u_gb0_texture;
 uniform sampler2D u_gb1_texture;
@@ -797,6 +801,7 @@ uniform vec2 u_iRes;
 uniform vec3 u_ambient_light;
 
 // Color correction
+// !!!!!!!!!!!BORRAR
 uniform int u_light_is_first;
 uniform int u_light_is_last;
 uniform int u_gamma;
@@ -820,7 +825,11 @@ uniform int u_shadow_i;
 out vec4 FragColor;
 
 float getRealDepth(vec4 proj_pos){
-	float depth = texture( u_depth_texture, v_uv ).x;
+	float n = u_camera_nearfar.x;
+	float f = u_camera_nearfar.y;
+	float depth_nonlin = texture( u_depth_texture, v_uv ).x;
+	float depth = n * (depth_nonlin + 1.0) / (f + n - depth_nonlin * (f - n));
+	
 	return depth;
 }
 
@@ -847,14 +856,13 @@ void main()
 		1.0 // shadow_factor
 	);
 
-	// POT SER QUE L'ORDRE DELS GB NO SIGUI CORRECTE, NO ESTIC SEGURA
 	vec4 gb0_color = texture(u_gb0_texture, v_uv);
 	vec4 gb1_color = texture(u_gb1_texture, v_uv);
 	vec4 gb2_color = texture(u_gb2_texture, v_uv);
 	vec4 gb3_color = texture(u_gb3_texture, v_uv);
 
 	vec2 uv = v_uv;
-	float depth = texture( u_depth_texture, uv ).x;
+	float depth = texture( u_gb0_texture, uv ).x;
 	vec4 screen_pos = vec4(uv.x*2.0-1.0, uv.y*2.0-1.0, depth*2.0-1.0, 1.0);
 	vec4 proj_worldpos = u_inverse_viewprojection * screen_pos;
 	LightComp.world_position = proj_worldpos.xyz / proj_worldpos.w;
@@ -904,11 +912,8 @@ void main()
 
 	color.xyz *= light;
 
-	if (u_gamma == 1){
-		if (u_light_is_last == 1){
-			color.xyz = gamma(color.xyz);
-		}
-	}
+	//FragColor = texture(u_depth_texture, v_uv);
+	//FragColor = vec4(LightComp.shadow_factor.x);
 
 	FragColor = color;
 }
@@ -918,12 +923,14 @@ void main()
 #version 330 core
 in vec2 v_uv;
 in vec4 v_color;
-in vec3 v_position;
-in vec3 v_world_position;
-
 
 uniform sampler2D u_screen_texture;
+uniform float u_lumwhite2;
+uniform float u_average_lum;
+uniform float u_scale;
+
 out vec4 FragColor;
+
 
 vec3 gamma(vec3 c)
 {
@@ -931,10 +938,21 @@ vec3 gamma(vec3 c)
 }
 
 void main(){
+
 	vec4 color = texture2D(u_screen_texture, v_uv);
-	vec3 color_corr = gamma(color.xyz);
+	vec3 rgb = color.xyz;
+	//float lum = dot(rgb, vec3(0.2126, 0.7152, 0.0722));
+	//float L = (u_scale / u_average_lum) * lum;
+	//float Ld = (L * (1.0 + L / u_lumwhite2)) / (1.0 + L);
+	//rgb = (rgb / lum) * Ld;
+	//rgb = max(rgb,vec3(0.001));
+	rgb = gamma(rgb);
+	//rgb = pow( rgb, vec3( u_igamma ) );
+	FragColor = vec4( rgb, color.a );
+
 	//FragColor = vec4(color_corr, 1.0);
-	FragColor = color;
+	//FragColor = color;
+	//FragColor = vec4(1.0);
 }
 
 
@@ -948,6 +966,9 @@ uniform vec3 u_camera_position;
 uniform vec4 u_color;
 uniform float u_time;
 uniform float u_alpha_cutoff;
+
+// to linearize depth
+uniform vec2 u_camera_nearfar;
 
 // YA NO TENEMOS TEXTURAS DEL MATERIAL -- AHORA TENEMOS LAS TEXTURAS DEL GBUFFER
 uniform sampler2D u_gb0_texture;
