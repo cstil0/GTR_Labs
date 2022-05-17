@@ -274,6 +274,7 @@ void GTR::Renderer::generateScreenTexture(Mesh* mesh)
 {
 	if (!screen_fbo) {
 		screen_texture = new Texture();
+		screen_texture->create(Application::instance->window_width, Application::instance->window_height);
 		screen_fbo = new FBO();
 		screen_fbo->create(2048, 2048,
 			1, 			//three textures
