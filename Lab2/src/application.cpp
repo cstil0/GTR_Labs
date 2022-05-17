@@ -259,6 +259,13 @@ void Application::renderDebugGUI(void)
 		ImGui::TreePop();
 	}
 
+	if (ImGui::TreeNode("Color Correction")) {
+		ImGui::SliderFloat("Average Luminance", &renderer->averagelum, 0.5, 100);
+		ImGui::SliderFloat("Intensity of white", &renderer->lumwhite2, 0.01, 1);
+		ImGui::SliderFloat("Scale", &renderer->scale, 0.01, 10);
+		ImGui::TreePop();
+	}
+
 	//add info to the debug panel about the camera
 	if (ImGui::TreeNode(camera, "Camera")) {
 		camera->renderInMenu();

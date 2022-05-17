@@ -941,11 +941,11 @@ void main(){
 
 	vec4 color = texture2D(u_screen_texture, v_uv);
 	vec3 rgb = color.xyz;
-	//float lum = dot(rgb, vec3(0.2126, 0.7152, 0.0722));
-	//float L = (u_scale / u_average_lum) * lum;
-	//float Ld = (L * (1.0 + L / u_lumwhite2)) / (1.0 + L);
-	//rgb = (rgb / lum) * Ld;
-	//rgb = max(rgb,vec3(0.001));
+	float lum = dot(rgb, vec3(0.2126, 0.7152, 0.0722));
+	float L = (u_scale / u_average_lum) * lum;
+	float Ld = (L * (1.0 + L / u_lumwhite2)) / (1.0 + L);
+	rgb = (rgb / lum) * Ld;
+	rgb = max(rgb,vec3(0.001));
 	rgb = gamma(rgb);
 	//rgb = pow( rgb, vec3( u_igamma ) );
 	FragColor = vec4( rgb, color.a );

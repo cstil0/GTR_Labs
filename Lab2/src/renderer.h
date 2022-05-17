@@ -75,6 +75,11 @@ namespace GTR {
 
 		// color correction
 		bool gamma;
+
+		float lumwhite2;
+		float averagelum;
+		float scale;
+
 		//bool bona_nit; // true-> todo apagado (sin luces), false-> luces visibles
 
 		Renderer();

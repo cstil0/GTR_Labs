@@ -38,6 +38,9 @@ GTR::Renderer::Renderer()
 
 
 	gamma = true;
+	lumwhite2 = 1.0;
+	averagelum = 70.0;
+	scale = 1.0;
 	//bona_nit = false;
 
 	screen_texture = NULL;
@@ -942,11 +945,9 @@ void GTR::Renderer::renderForward(Camera* camera)
 		Shader* col_corr = Shader::Get("col_corr");
 		col_corr->enable();
 		col_corr->setUniform("u_screen_texture", screen_texture, 0);
-		float lumwhite2 = 1.0;
 		col_corr->setUniform("u_lumwhite2", lumwhite2);
-		float average_lum = 50;
-		col_corr->setUniform("u_average_lum", average_lum);
-		//col_corr->setUniform("u_scale", 1);
+		col_corr->setUniform("u_average_lum", averagelum);
+		col_corr->setUniform("u_scale", scale);
 		
 		Mesh* quad = Mesh::getQuad();
 		quad->render(GL_TRIANGLES);
@@ -1115,9 +1116,9 @@ void GTR::Renderer::renderDeferred(Camera* camera)
 	col_corr->enable();
 	col_corr->setUniform("u_screen_texture", illumination_fbo->color_textures[0], 0);
 	
-	//col_corr->setUniform("u_lumwhite2", 1);
-	//col_corr->setUniform("u_average_lum", 1);
-	//col_corr->setUniform("u_scale", 1);
+	col_corr->setUniform("u_lumwhite2", lumwhite2);
+	col_corr->setUniform("u_average_lum", averagelum);
+	col_corr->setUniform("u_scale", scale);
 	//col_corr->setUniform("u_screen_texture", screen_texture, 0);
 	Mesh* quad_final = Mesh::getQuad();
 	quad_final->render(GL_TRIANGLES);
