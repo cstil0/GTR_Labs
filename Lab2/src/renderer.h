@@ -75,6 +75,7 @@ namespace GTR {
 
 		// color correction
 		bool gamma;
+		bool tonemapping;
 
 		float lumwhite2;
 		float averagelum;

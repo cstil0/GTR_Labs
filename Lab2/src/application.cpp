@@ -253,6 +253,7 @@ void Application::renderDebugGUI(void)
 	ImGui::Combo("Lights shader", &renderer->typeOfRender, "SINGLEPASS\0MULTIPASS", 2);// , GTR::Scene::eRenderPipeline::MULTIPASS));
 	ImGui::Combo("Pipeline", (int*)&renderer->pipeline, "FORWARD\0DEFERRED", 2);
 	ImGui::Checkbox("Gamma", &renderer->gamma);
+	ImGui::Checkbox("Tonemapping", &renderer->tonemapping);
 	
 	if (ImGui::TreeNode("Debug Tools")) {
 		renderer->renderInMenu();
@@ -260,8 +261,8 @@ void Application::renderDebugGUI(void)
 	}
 
 	if (ImGui::TreeNode("Color Correction")) {
-		ImGui::SliderFloat("Average Luminance", &renderer->averagelum, 0.5, 100);
-		ImGui::SliderFloat("Intensity of white", &renderer->lumwhite2, 0.01, 1);
+		ImGui::SliderFloat("Average Exposure", &renderer->averagelum, 0.5, 100);
+		ImGui::SliderFloat("White Intensity", &renderer->lumwhite2, 0.01, 1);
 		ImGui::SliderFloat("Scale", &renderer->scale, 0.01, 10);
 		ImGui::TreePop();
 	}

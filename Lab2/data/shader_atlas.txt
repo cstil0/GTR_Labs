@@ -698,7 +698,9 @@ void main()
 	if(u_texture2show == 3)
 		color.xyz = texture(u_emissive_texture, v_uv).xyz;
 	
-	FinalColor = color;
+	//FinalColor = color;
+	FinalColor = vec4(LightComp.L, 1.0);
+
 }
 
 // -----------------------------------------------------------
@@ -913,9 +915,9 @@ void main()
 	color.xyz *= light;
 
 	//FragColor = texture(u_depth_texture, v_uv);
-	//FragColor = vec4(LightComp.shadow_factor.x);
+	FragColor = vec4(LightComp.L, 1.0);
 
-	FragColor = color;
+	//FragColor = color;
 }
 
 //------------------------------------------------------------
@@ -924,6 +926,8 @@ void main()
 in vec2 v_uv;
 in vec4 v_color;
 
+uniform int u_gamma;
+uniform int u_tonemapping;
 uniform sampler2D u_screen_texture;
 uniform float u_lumwhite2;
 uniform float u_average_lum;
@@ -938,15 +942,17 @@ vec3 gamma(vec3 c)
 }
 
 void main(){
-
 	vec4 color = texture2D(u_screen_texture, v_uv);
 	vec3 rgb = color.xyz;
-	float lum = dot(rgb, vec3(0.2126, 0.7152, 0.0722));
-	float L = (u_scale / u_average_lum) * lum;
-	float Ld = (L * (1.0 + L / u_lumwhite2)) / (1.0 + L);
-	rgb = (rgb / lum) * Ld;
-	rgb = max(rgb,vec3(0.001));
-	rgb = gamma(rgb);
+	if (u_tonemapping == 1){
+		float lum = dot(rgb, vec3(0.2126, 0.7152, 0.0722));
+		float L = (u_scale * u_average_lum) * lum;
+		float Ld = (L * (1.0 + L * u_lumwhite2)) / (1.0 + L);
+		rgb = (rgb / lum) * Ld;
+		rgb = max(rgb,vec3(0.001));
+	}
+	if (u_gamma == 1)
+		rgb = gamma(rgb);
 	//rgb = pow( rgb, vec3( u_igamma ) );
 	FragColor = vec4( rgb, color.a );
 

@@ -38,8 +38,10 @@ GTR::Renderer::Renderer()
 
 
 	gamma = true;
-	lumwhite2 = 1.0;
-	averagelum = 70.0;
+	tonemapping = true;
+
+	lumwhite2 = 0.8;
+	averagelum = 1.6;
 	scale = 1.0;
 	//bona_nit = false;
 
@@ -944,6 +946,8 @@ void GTR::Renderer::renderForward(Camera* camera)
 
 		Shader* col_corr = Shader::Get("col_corr");
 		col_corr->enable();
+		col_corr->setUniform("u_gamma", gamma);
+		col_corr->setUniform("u_tonemapping", tonemapping);
 		col_corr->setUniform("u_screen_texture", screen_texture, 0);
 		col_corr->setUniform("u_lumwhite2", lumwhite2);
 		col_corr->setUniform("u_average_lum", averagelum);
@@ -1047,7 +1051,7 @@ void GTR::Renderer::renderDeferred(Camera* camera)
 
 	Vector3 temp_ambient = scene->ambient_light;
 
-	glEnable(GL_CULL_FACE);
+	//glEnable(GL_CULL_FACE);
 
 	if (!lights.size()) {
 		shader->setUniform("u_light_color", Vector3());
@@ -1115,7 +1119,8 @@ void GTR::Renderer::renderDeferred(Camera* camera)
 	Shader* col_corr = Shader::Get("col_corr");
 	col_corr->enable();
 	col_corr->setUniform("u_screen_texture", illumination_fbo->color_textures[0], 0);
-	
+	col_corr->setUniform("u_gamma", gamma);
+	col_corr->setUniform("u_tonemapping", tonemapping);
 	col_corr->setUniform("u_lumwhite2", lumwhite2);
 	col_corr->setUniform("u_average_lum", averagelum);
 	col_corr->setUniform("u_scale", scale);
@@ -1139,7 +1144,7 @@ void GTR::Renderer::renderDeferred(Camera* camera)
 		showGBuffers(Application::instance->window_width, Application::instance->window_height, camera);
 
 	glEnable(GL_DEPTH_TEST);
-	glEnable(GL_CULL_FACE);
+	//glEnable(GL_CULL_FACE);
 }
 
 // -- Upload to shader functions --
@@ -1319,7 +1324,7 @@ void Renderer::setSinglepass_parameters(GTR::Material* material, Shader* shader,
 		shader->setUniform("u_lights_shadowmap_vpm", lights_shadowmap_vpm);
 	shader->setUniform("u_lights_shadow_bias", lights_shadow_bias);
 
-	glEnable(GL_CULL_FACE);
+	//glEnable(GL_CULL_FACE);
 	//do the draw call that renders the mesh into the screen
 	mesh->render(GL_TRIANGLES);
 	// show screen_texture since we are always drawing there
@@ -1396,6 +1401,7 @@ void Renderer::setMultipassParameters(GTR::Material* material, Shader* shader, M
 		// we already passed first light
 
 		shader->setUniform("u_gamma", gamma);
+		// borrar!!!!!!!!!
 		shader->setUniform("u_light_is_first", is_first);
 		//int is_last = i == lights.size() - 1 ? 1 : 0;
 		shader->setUniform("u_light_is_last", i == lights.size()-1 ? 1 : 0);
