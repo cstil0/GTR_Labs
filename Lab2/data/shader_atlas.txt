@@ -698,8 +698,9 @@ void main()
 	if(u_texture2show == 3)
 		color.xyz = texture(u_emissive_texture, v_uv).xyz;
 	
-	//FinalColor = color;
-	FinalColor = vec4(LightComp.L, 1.0);
+	FinalColor = color;
+	//computeL_point(LightComp);
+	//FinalColor = vec4(LightComp.world_position, 1.0);
 
 }
 
@@ -827,11 +828,10 @@ uniform int u_shadow_i;
 out vec4 FragColor;
 
 float getRealDepth(vec4 proj_pos){
-	float n = u_camera_nearfar.x;
-	float f = u_camera_nearfar.y;
-	float depth_nonlin = texture( u_depth_texture, v_uv ).x;
-	float depth = n * (depth_nonlin + 1.0) / (f + n - depth_nonlin * (f - n));
-	
+	float depth = texture( u_gb0_texture, v_uv ).x;
+	//vec4 screen_pos = vec4(v_uv.x*2.0-1.0, v_uv.y*2.0-1.0, depth*2.0-1.0, 1.0);
+	//vec4 proj_worldpos = u_inverse_viewprojection * screen_pos;
+	//return proj_worldpos.xyz / proj_worldpos.w;
 	return depth;
 }
 
@@ -864,7 +864,7 @@ void main()
 	vec4 gb3_color = texture(u_gb3_texture, v_uv);
 
 	vec2 uv = v_uv;
-	float depth = texture( u_gb0_texture, uv ).x;
+	float depth = texture( u_depth_texture, uv ).x;
 	vec4 screen_pos = vec4(uv.x*2.0-1.0, uv.y*2.0-1.0, depth*2.0-1.0, 1.0);
 	vec4 proj_worldpos = u_inverse_viewprojection * screen_pos;
 	LightComp.world_position = proj_worldpos.xyz / proj_worldpos.w;
@@ -915,9 +915,10 @@ void main()
 	color.xyz *= light;
 
 	//FragColor = texture(u_depth_texture, v_uv);
-	FragColor = vec4(LightComp.L, 1.0);
+	//FragColor = vec4(u_light_direction, 1.0);
+	//FragColor = vec4(LightComp.world_position, 1.0);
 
-	//FragColor = color;
+	FragColor = color;
 }
 
 //------------------------------------------------------------
