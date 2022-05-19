@@ -1039,7 +1039,6 @@ void GTR::Renderer::renderDeferred(Camera* camera)
 	shader->setUniform("u_gb3_texture", gbuffers_fbo->color_textures[3], 3);
 	shader->setUniform("u_depth_texture", gbuffers_fbo->depth_texture, 4);
 
-
 	//pass the inverse projection of the camera to reconstruct world pos.
 	Matrix44 inv_vp = camera->viewprojection_matrix;
 	inv_vp.inverse();
@@ -1051,11 +1050,11 @@ void GTR::Renderer::renderDeferred(Camera* camera)
 
 	Vector3 temp_ambient = scene->ambient_light;
 
-	//glEnable(GL_CULL_FACE);
+	glEnable(GL_CULL_FACE);
 
 	if (!lights.size()) {
 		shader->setUniform("u_light_color", Vector3());
-		quad->render(GL_TRIANGLES);
+		sphere->render(GL_TRIANGLES);
 	}
 	int i_shadow = 0;
 	for (int i = 0; i < lights.size(); i++) {
@@ -1070,6 +1069,14 @@ void GTR::Renderer::renderDeferred(Camera* camera)
 		
 		LightEntity* light = lights[i];
 		
+		Vector3 dist_cam_light = light->model.getTranslation() - camera->center;
+		float module_dist = dist_cam_light.length();
+
+		if (module_dist < light->max_distance)
+			glFrontFace(GL_CW);
+		else
+			glFrontFace(GL_CCW);
+
 		if (i == 0) {
 			glDisable(GL_BLEND);
 		}
@@ -1077,6 +1084,14 @@ void GTR::Renderer::renderDeferred(Camera* camera)
 			glBlendFunc(GL_SRC_ALPHA, GL_ONE);
 			glEnable(GL_BLEND);
 		}
+		sphere->radius = light->max_distance;
+
+		Matrix44 m;
+		Vector3 light_pos = light->model.getTranslation();
+		m.setTranslation(light_pos.x, light_pos.y, light_pos.z);
+		m.scale(light->max_distance, light->max_distance, light->max_distance);
+		shader->setUniform("u_model", m);
+		shader->setUniform("u_viewprojection", camera->viewprojection_matrix);
 
 		//if (i == 0) {
 		//	int n = 0;
@@ -1088,33 +1103,18 @@ void GTR::Renderer::renderDeferred(Camera* camera)
 			i_shadow += 1;
 		}
 		if (light->light_type == LightEntity::eTypeOfLight::DIRECTIONAL)
-			quad->render(GL_TRIANGLES);
+			sphere->render(GL_TRIANGLES);
 		else
-			quad->render(GL_TRIANGLES);
-			//sphere->render(GL_TRIANGLES);
+			sphere->render(GL_TRIANGLES);
 
 		temp_ambient = Vector3(0.0, 0.0, 0.0);  // CAMBIAR AMBIENT DESPUÉS DE LA PRIMERA ITERACIÓN
+		glFrontFace(GL_CCW);
 	}
 
 	illumination_fbo->unbind();
 	//gbuffers_fbo->depth_texture->toViewport();
 
 	glDisable(GL_BLEND);
-
-	//if (!screen_fbo) {
-	//	screen_texture = new Texture();
-	//	screen_fbo = new FBO();
-	//	screen_fbo->create(Application::instance->window_width, Application::instance->window_height,
-	//		1, 			//three textures
-	//		GL_RGBA, 		//four channels
-	//		GL_UNSIGNED_BYTE, //1 byte
-	//		true);		//add depth_texture
-	//}
-
-	//// take the texture from the fbo and store it in another variable
-	//screen_texture = screen_fbo->color_textures[0];
-
-	//screen_fbo->bind();
 
 	Shader* col_corr = Shader::Get("col_corr");
 	col_corr->enable();
@@ -1139,12 +1139,12 @@ void GTR::Renderer::renderDeferred(Camera* camera)
 
 	//screen_fbo->unbind();
 	
-
 	if (show_buffers)
 		showGBuffers(Application::instance->window_width, Application::instance->window_height, camera);
 
 	glEnable(GL_DEPTH_TEST);
-	//glEnable(GL_CULL_FACE);
+	glDisable(GL_CULL_FACE);
+	glFrontFace(GL_CCW);
 }
 
 // -- Upload to shader functions --

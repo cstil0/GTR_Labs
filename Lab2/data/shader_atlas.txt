@@ -4,7 +4,7 @@ texture basic.vs texture.fs
 multi_pass basic.vs light_multi_pass.fs
 single_pass basic.vs light_single_pass.fs
 gbuffers basic.vs gbuffers.fs
-deferred quad.vs deferred.fs
+deferred basic.vs deferred.fs
 col_corr quad.vs col_corr.fs
 depth quad.vs depth.fs
 multi basic.vs multi.fs
@@ -788,6 +788,9 @@ uniform float u_alpha_cutoff;
 
 uniform vec2 u_camera_nearfar;
 
+uniform mat4 u_model;
+uniform mat4 u_viewprojection;
+
 // YA NO TENEMOS TEXTURAS DEL MATERIAL -- AHORA TENEMOS LAS TEXTURAS DEL GBUFFER
 uniform sampler2D u_gb0_texture;
 uniform sampler2D u_gb1_texture;
@@ -857,13 +860,14 @@ void main()
 		1.0, // attenuation factor
 		1.0 // shadow_factor
 	);
+	
+	vec2 uv = gl_FragCoord.xy * u_iRes.xy;
 
-	vec4 gb0_color = texture(u_gb0_texture, v_uv);
-	vec4 gb1_color = texture(u_gb1_texture, v_uv);
-	vec4 gb2_color = texture(u_gb2_texture, v_uv);
-	vec4 gb3_color = texture(u_gb3_texture, v_uv);
+	vec4 gb0_color = texture(u_gb0_texture, uv);
+	vec4 gb1_color = texture(u_gb1_texture, uv);
+	vec4 gb2_color = texture(u_gb2_texture, uv);
+	vec4 gb3_color = texture(u_gb3_texture, uv);
 
-	vec2 uv = v_uv;
 	float depth = texture( u_depth_texture, uv ).x;
 	vec4 screen_pos = vec4(uv.x*2.0-1.0, uv.y*2.0-1.0, depth*2.0-1.0, 1.0);
 	vec4 proj_worldpos = u_inverse_viewprojection * screen_pos;
