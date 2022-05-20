@@ -97,6 +97,7 @@ namespace GTR {
 		// BORRAR
 		void showShadowmapTest(Camera* camera);
 		Vector4 assignMapPiece(int width, int height, int index, int num_elements);
+		Vector4 assignMapPiece_shader(int width, int height, int index, int num_elements);
 		void generateShadowmap(LightEntity* light, int index);
 		// BORRAR
 		void generateScreenTexture(Mesh* mesh);

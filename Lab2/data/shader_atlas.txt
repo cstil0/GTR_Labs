@@ -5,6 +5,7 @@ multi_pass basic.vs light_multi_pass.fs
 single_pass basic.vs light_single_pass.fs
 gbuffers basic.vs gbuffers.fs
 deferred basic.vs deferred.fs
+deferred_ambient quad.vs deferred.fs
 col_corr quad.vs col_corr.fs
 depth quad.vs depth.fs
 multi basic.vs multi.fs
@@ -154,7 +155,8 @@ void testShadowMap(inout LightStruct lc){
 	float real_depth = getRealDepth(proj_pos);
 	
 	//read depth from depth buffer in [0..+1] non-linear
-	vec4 scale_factor = assignMapPiece(u_shadow_i);
+	//vec4 scale_factor = assignMapPiece(u_shadow_i);
+	vec4 scale_factor = u_map_piece;
 	//vec2 sh_uv = vec2(shadow_uv.x*0.5 + 0.5, shadow_uv.y*0.5 + 0.5);
 	vec2 sh_uv = vec2(shadow_uv.x*scale_factor[0] + scale_factor[2], shadow_uv.y*scale_factor[1] + scale_factor[3]);
 	float shadow_depth = texture( u_light_shadowmap, sh_uv).x;
@@ -245,6 +247,7 @@ void computeAttenuation(inout LightStruct lc, int i){
 }
 
 vec4 assignMapPiece(int index){
+	// !!!!!!!!!!!!HARCODEADO
 	if (index == 0)
 		return vec4(0.5, 0.5, 0, 0);
 	else if (index == 1)
@@ -257,7 +260,7 @@ vec4 assignMapPiece(int index){
 
 void testShadowMap(inout LightStruct lc, int i, int sh_i){
 	//project our 3D position to the shadowmap
-	vec4 proj_pos = u_lights_shadowmap_vpm[i] * vec4(v_world_position,1.0);
+	vec4 proj_pos = u_lights_shadowmap_vpm[sh_i] * vec4(v_world_position,1.0);
 	
 	//from homogeneus space to clip space
 	vec2 shadow_uv = proj_pos.xy / proj_pos.w;
@@ -266,8 +269,7 @@ void testShadowMap(inout LightStruct lc, int i, int sh_i){
 	shadow_uv = shadow_uv * 0.5 + vec2(0.5);
 
 	//get point depth [-1 .. +1] in non-linear space
-	float real_depth = (proj_pos.z - u_lights_shadow_bias[i]) / 
-	proj_pos.w;
+	float real_depth = (proj_pos.z - u_lights_shadow_bias[sh_i]) / proj_pos.w;
 	
 	//normalize from [-1..+1] to [0..+1] still non-linear
 	real_depth = real_depth * 0.5 + 0.5;
@@ -586,6 +588,7 @@ uniform sampler2D u_light_shadowmap;
 uniform mat4 u_light_shadowmap_vpm;
 uniform float u_light_shadow_bias;
 uniform int u_shadow_i;
+uniform vec4 u_map_piece;
 
 //out vec4 FragColor;
 layout(location = 0) out vec4 FinalColor;
@@ -826,16 +829,17 @@ uniform sampler2D u_light_shadowmap;
 uniform mat4 u_light_shadowmap_vpm;
 uniform float u_light_shadow_bias;
 uniform int u_shadow_i;
-
+uniform vec4 u_map_piece;
 
 out vec4 FragColor;
 
 float getRealDepth(vec4 proj_pos){
-	float depth = texture( u_gb0_texture, v_uv ).x;
-	//vec4 screen_pos = vec4(v_uv.x*2.0-1.0, v_uv.y*2.0-1.0, depth*2.0-1.0, 1.0);
-	//vec4 proj_worldpos = u_inverse_viewprojection * screen_pos;
+	float depth = texture( u_depth_texture, v_uv ).x;
+	vec4 screen_pos = vec4(v_uv.x*2.0-1.0, v_uv.y*2.0-1.0, depth*2.0-1.0, 1.0);
+	vec4 proj_worldpos = u_inverse_viewprojection * screen_pos;
 	//return proj_worldpos.xyz / proj_worldpos.w;
-	return depth;
+	float real_depth = (proj_worldpos.z - u_light_shadow_bias) / proj_worldpos.w;
+	return real_depth * 0.5 + 0.5;
 }
 
 #include normalmap_functions
@@ -918,7 +922,7 @@ void main()
 
 	color.xyz *= light;
 
-	//FragColor = texture(u_depth_texture, v_uv);
+	//FragColor = vec4(depth, depth, depth, 1.0);
 	//FragColor = vec4(u_light_direction, 1.0);
 	//FragColor = vec4(LightComp.world_position, 1.0);
 
@@ -934,6 +938,7 @@ in vec4 v_color;
 uniform int u_gamma;
 uniform int u_tonemapping;
 uniform sampler2D u_screen_texture;
+uniform sampler2D u_depth_texture;
 uniform float u_lumwhite2;
 uniform float u_average_lum;
 uniform float u_scale;
@@ -949,6 +954,11 @@ vec3 gamma(vec3 c)
 void main(){
 	vec4 color = texture2D(u_screen_texture, v_uv);
 	vec3 rgb = color.xyz;
+	float depth = texture2D(u_depth_texture, v_uv).x;
+	// discard background pixels to avoid artifacts
+	if (depth == 1.0){
+		discard;
+	}
 	if (u_tonemapping == 1){
 		float lum = dot(rgb, vec3(0.2126, 0.7152, 0.0722));
 		float L = (u_scale * u_average_lum) * lum;

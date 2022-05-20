@@ -92,7 +92,6 @@ void Application::render(void)
 	glDisable(GL_BLEND);
     
 	glEnable(GL_DEPTH_TEST);
-	glEnable(GL_CULL_FACE);
 	if(render_wireframe)
 		glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
 	else

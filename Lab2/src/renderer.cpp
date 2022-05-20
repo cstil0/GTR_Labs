@@ -134,14 +134,46 @@ Vector4 GTR::Renderer::assignMapPiece(int width, int height, int index, int num_
 
 	//return Vector4(2048*i_col*size, 2048*i_row*size, 2048*size, 2048*size);
 	if (index == 0)
+		//return Vector4(0, 0, 0.5, 0.5);
 		return Vector4(0, 0, width * 0.5, height * 0.5);
 	else if (index == 1)
+		//return Vector4(0, 0.5, 0.5, 0.5);
 		return Vector4(0, height * 0.5, width * 0.5, width * 0.5);
 	else if (index == 2)
+		//return Vector4(0.5, 0, 0.5, 0.5);
 		return Vector4(width * 0.5, 0, width * 0.5, height * 0.5);
 	else
+		//return Vector4(0.5, 0.5, 0.5, 0.5);
 		return Vector4(width * 0.5, height * 0.5, width * 0.5, height * 0.5);
 }
+
+// two functions since viewport and shader reads shadowmaps in different ways
+Vector4 GTR::Renderer::assignMapPiece_shader(int width, int height, int index, int num_elements) {
+	//int nElements = 6;
+	int num_cols = (int)ceil(sqrt(num_elements));
+	int num_rows;
+	if (num_elements <= num_cols * (num_cols - 1)) // last row remains empty
+		num_rows = num_cols - 1;                 // eliminate it
+	else
+		num_rows = num_cols;
+
+	float min_cols_rows = (num_cols < num_rows) ? num_cols : num_rows;
+	float size = 1 / min_cols_rows;
+
+	int i_row = floor(index / num_cols);
+	int i_col = floor(index - (i_row * num_cols) % num_rows);
+
+	//return Vector4(2048*i_col*size, 2048*i_row*size, 2048*size, 2048*size);
+	if (index == 0)
+		return Vector4(0.5, 0.5, 0, 0);
+	else if (index == 1)
+		return Vector4(0.5, 0.5, 0, 0.5);
+	else if (index == 2)
+		return Vector4(0.5, 0.5, 0.5, 0);
+	else
+		return Vector4(0.5, 0.5, 0.5, 0.5);
+}
+
 // generate the shadowmap given a light
 void GTR::Renderer::generateShadowmap(LightEntity* light, int index)
 {
@@ -231,7 +263,7 @@ void GTR::Renderer::generateShadowmap(LightEntity* light, int index)
 		// locate and rotate the camera
 		// Now, define center using the target vector since it corresponds to a point where the light is pointing
 		// ESTARIA BÉ CORREGIR-HO DIRECTAMENT AL SCENE
-		light_camera->lookAt(vec3(0.0, 0.0, 0.0) - light->model.getTranslation(), light->target, vec3(0.0, 0.0, 0.0) - light->model.rotateVector(Vector3(0, 1, 0)));
+		light_camera->lookAt(light->model.getTranslation(), light->target, light->model.rotateVector(Vector3(0, 1, 0)));
 	}
 
 	light_camera->enable();
@@ -260,6 +292,8 @@ void GTR::Renderer::generateShadowmap(LightEntity* light, int index)
 			//}
 			//if (index == 0) {
 			//!!!!!!!!!!!!!!!!!!! HARCODEADO
+			//int width = 2048 * 3;
+			//int height = 2048 * 3;
 			Vector4 piece = assignMapPiece(2048 * 3, 2048 * 3, index, num_lights_shadows);
 			glViewport(piece.x, piece.y, piece.z, piece.w);
 
@@ -613,6 +647,7 @@ void Renderer::renderMeshWithMaterial(const Matrix44 model, Mesh* mesh, GTR::Mat
 		glDisable(GL_CULL_FACE);
 	else
 		glEnable(GL_CULL_FACE);
+
 	assert(glGetError() == GL_NO_ERROR);
 
 	//chose a shader
@@ -952,6 +987,7 @@ void GTR::Renderer::renderForward(Camera* camera)
 		col_corr->setUniform("u_lumwhite2", lumwhite2);
 		col_corr->setUniform("u_average_lum", averagelum);
 		col_corr->setUniform("u_scale", scale);
+		col_corr->setUniform("u_depth_texture", screen_fbo->depth_texture, 1);
 		
 		Mesh* quad = Mesh::getQuad();
 		quad->render(GL_TRIANGLES);
@@ -960,6 +996,11 @@ void GTR::Renderer::renderForward(Camera* camera)
 
 		glEnable(GL_DEPTH_TEST);
 	}
+
+
+	glViewport(0, 0, 256, 256);
+	screen_texture->toViewport();
+	glViewport(0, 0, Application::instance->window_width, Application::instance->window_height);
 }
 
 
@@ -1173,6 +1214,8 @@ void Renderer::uploadLightToShader(GTR::LightEntity* light, Shader* shader, Vect
 		shader->setUniform("u_light_shadowmap_vpm", light->light_camera->viewprojection_matrix);
 		shader->setUniform("u_light_shadow_bias", light->shadow_bias);
 		shader->setUniform("u_shadow_i", shadow_i);
+		vec4 map_piece = assignMapPiece_shader(2048 * 3, 2048 * 3, shadow_i, num_lights_shadows);
+		shader->setUniform("u_map_piece", map_piece);
 	}
 	else
 		shader->setUniform("u_light_cast_shadows", 0);
@@ -1255,7 +1298,7 @@ void Renderer::setSinglepass_parameters(GTR::Material* material, Shader* shader,
 	std::vector<Matrix44> lights_shadowmap_vpm;
 	std::vector<float> lights_shadow_bias;
 
-
+	int lshadow_count = 0;
 	// Iterate and store the information
 	for (int i = 0; i < max_lights; i++) {
 		LightEntity* light;
@@ -1292,6 +1335,10 @@ void Renderer::setSinglepass_parameters(GTR::Material* material, Shader* shader,
 			lights_cast_shadows.push_back(1);
 			//lights_shadowmap.push_back(light->shadowmap);
 			lights_shadowmap_vpm.push_back(light->light_camera->viewprojection_matrix);
+			//vec4 map_piece = assignMapPiece_shader(2048 * 3, 2048 * 3, lshadow_count, num_lights_shadows);
+			//shader->setUniform("u_map_piece", map_piece);
+			//lshadow_count += 1;
+
 		}
 		else {
 			lights_cast_shadows.push_back(0);
@@ -1428,6 +1475,9 @@ void Renderer::setMultipassParameters(GTR::Material* material, Shader* shader, M
 			shader->setUniform("u_light_shadowmap_vpm", light->light_camera->viewprojection_matrix);
 			shader->setUniform("u_light_shadow_bias", light->shadow_bias);
 			shader->setUniform("u_shadow_i", lshadow_count);
+			// HARCODEADO!!!!!!!
+			vec4 map_piece = assignMapPiece_shader(2048*3, 2048*3, lshadow_count, num_lights_shadows);
+			shader->setUniform("u_map_piece", map_piece);
 			lshadow_count += 1;
 		}
 		else
