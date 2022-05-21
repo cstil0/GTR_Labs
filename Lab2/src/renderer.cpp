@@ -1020,6 +1020,7 @@ void GTR::Renderer::renderDeferred(Camera* camera)
 		//create and FBO
 		gbuffers_fbo = new FBO();
 		illumination_fbo = new FBO();
+		ao_fbo = new FBO();
 
 		//create 3 textures of 4 components
 		gbuffers_fbo->create(width, height,
@@ -1034,6 +1035,12 @@ void GTR::Renderer::renderDeferred(Camera* camera)
 			GL_RGBA, 		//four channels
 			GL_UNSIGNED_BYTE, //1 byte
 			true);		//add depth_texture
+
+		ssao_fbo->create(width, height, // MIRAR SI CON MENOS TAMAÑO NO PERDEMOS MUCHO
+			1, 			//three textures
+			GL_RGBA, 		//four channels
+			GL_UNSIGNED_BYTE, //1 byte
+			true);  
 	}
 
 	gbuffers_fbo->bind();
@@ -1057,6 +1064,9 @@ void GTR::Renderer::renderDeferred(Camera* camera)
 	gbuffers_fbo->unbind();
 
 	//screen_texture = illumination_fbo->color_textures[0];
+
+
+
 
 	illumination_fbo->bind();
 	glClearColor(scene->background_color.x, scene->background_color.y, scene->background_color.z, 1.0);

@@ -81,6 +81,9 @@ namespace GTR {
 		float averagelum;
 		float scale;
 
+		// ambient occlusion
+		FBO* ssao_fbo;
+
 		//bool bona_nit; // true-> todo apagado (sin luces), false-> luces visibles
 
 		Renderer();
