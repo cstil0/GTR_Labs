@@ -83,6 +83,8 @@ namespace GTR {
 
 		// ambient occlusion
 		FBO* ssao_fbo;
+		std::vector<Vector3> random_points;
+		bool show_ssao;
 
 		//bool bona_nit; // true-> todo apagado (sin luces), false-> luces visibles
 
@@ -134,13 +136,9 @@ namespace GTR {
 		void setLightsInvisible();
 		void renderInMenu();
 
-		// TO DO:
-
-		// MODIFICAR IF DEL SHADER SI TIENE O NO GAMMA PARA OPTIMIZAR
-		// BUSCAR COMO METER INCLUDE EN EL SHADER PARA NO REPETIR FUNCIONES
-		// ESFERA QUAD DEFERRED
+		
 	};
 
 	Texture* CubemapFromHDRE(const char* filename);
-
+	std::vector<Vector3> generateSpherePoints(int num, float radius, bool hemi);
 };

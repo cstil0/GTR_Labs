@@ -37,7 +37,6 @@ GTR::Renderer::Renderer()
 	pipeline = FORWARD;
 	typeOfRender = eRenderPipeline::MULTIPASS;
 
-
 	gamma = true;
 	tonemapping = true;
 
@@ -50,6 +49,9 @@ GTR::Renderer::Renderer()
 	screen_fbo = NULL;
 
 	ssao_fbo = NULL;
+	random_points = generateSpherePoints(64, 1, false);
+	show_ssao = false;
+
 }
 
 // --- Rendercalls manager functions ---
@@ -1073,11 +1075,19 @@ void GTR::Renderer::renderDeferred(Camera* camera)
 
 	ssao_fbo->bind();
 
+	glDisable(GL_DEPTH_TEST);
+	glDisable(GL_BLEND);
+
 	Shader* shader = Shader::Get("ssao"); 
 	shader->enable();
+	shader->setUniform("u_gb1_texture", gbuffers_fbo->color_textures[1], 1);
 	shader->setUniform("u_depth_texture", gbuffers_fbo->depth_texture, 4);
+	shader->setUniform("u_viewprojection", camera->viewprojection_matrix);
 	shader->setUniform("u_inverse_viewprojection", inv_vp);
 	shader->setUniform("u_iRes", Vector2(1.0 / (float)width, 1.0 / (float)height));
+
+	shader->setUniform3Array("u_points", (float*)&random_points[0],random_points.size());
+
 
 	quad->render(GL_TRIANGLES);
 
@@ -1096,7 +1106,7 @@ void GTR::Renderer::renderDeferred(Camera* camera)
 	// UN QUAD ES UNA MESH QUE VA DE -1, 1 A 1,1N ??
 	// GUARDAMOS ESTO EN UNA VARIABLE?
 	Mesh* sphere = Mesh::Get("data/meshes/sphere.obj", false, false);
-	Shader* shader = Shader::Get("deferred");  // si utilizamos el sphere tenemos que tener en cuenta la view projection
+	shader = Shader::Get("deferred");  // si utilizamos el sphere tenemos que tener en cuenta la view projection
 											   // y la model para ubicar correctamente la esfera
 											   // coger de radio el max_distance
 	shader->enable();
@@ -1105,6 +1115,8 @@ void GTR::Renderer::renderDeferred(Camera* camera)
 	shader->setUniform("u_gb1_texture", gbuffers_fbo->color_textures[1], 1);
 	shader->setUniform("u_gb3_texture", gbuffers_fbo->color_textures[3], 3);
 	shader->setUniform("u_depth_texture", gbuffers_fbo->depth_texture, 4);
+	shader->setUniform("u_ssao_texture", ssao_fbo->color_textures[0], 5);
+	
 
 	//pass the inverse projection of the camera to reconstruct world pos.
 	shader->setUniform("u_inverse_viewprojection", inv_vp);
@@ -1206,6 +1218,11 @@ void GTR::Renderer::renderDeferred(Camera* camera)
 	
 	if (show_buffers)
 		showGBuffers(Application::instance->window_width, Application::instance->window_height, camera);
+
+	if (show_ssao)
+	{
+		ssao_fbo->color_textures[0]->toViewport();
+	}
 
 	glEnable(GL_DEPTH_TEST);
 	glDisable(GL_CULL_FACE);
@@ -1583,4 +1600,29 @@ Texture* GTR::CubemapFromHDRE(const char* filename)
 					(Uint8**)hdre->getFacesh(i), GL_RGBA16F, i);
 		}
 	return texture;
+}
+
+std::vector<Vector3> GTR::generateSpherePoints(int num, float radius, bool hemi)
+{
+	std::vector<Vector3> points;
+	points.resize(num);
+	for (int i = 0; i < num; i += 3)
+	{
+		Vector3& p = points[i];
+		float u = random();
+		float v = random();
+		float theta = u * 2.0 * PI;
+		float phi = acos(2.0 * v - 1.0);
+		float r = cbrt(random() * 0.9 + 0.1) * radius;
+		float sinTheta = sin(theta);
+		float cosTheta = cos(theta);
+		float sinPhi = sin(phi);
+		float cosPhi = cos(phi);
+		p.x = r * sinPhi * cosTheta;
+		p.y = r * sinPhi * sinTheta;
+		p.z = r * cosPhi;
+		if (hemi && p.z < 0)
+			p.z *= -1.0;
+	}
+	return points;
 }

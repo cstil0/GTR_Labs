@@ -7,6 +7,7 @@ gbuffers basic.vs gbuffers.fs
 deferred basic.vs deferred.fs
 deferred_ambient quad.vs deferred.fs
 col_corr quad.vs col_corr.fs
+ssao quad.vs ssao.fs
 depth quad.vs depth.fs
 multi basic.vs multi.fs
 
@@ -800,6 +801,7 @@ uniform sampler2D u_gb1_texture;
 uniform sampler2D u_gb2_texture;
 uniform sampler2D u_gb3_texture;
 uniform sampler2D u_depth_texture;
+uniform sampler2D u_ssao_texture;
 //uniform int u_normal_text_bool;
 uniform int u_texture2show;
 
@@ -885,7 +887,9 @@ void main()
 		color.xyz = degamma(color.xyz);
 	}
 
-	vec3 light = vec3(u_ambient_light);
+	float ao_factor = texture(u_ssao_texture, uv).x;
+
+	vec3 light = vec3(u_ambient_light) * ao_factor;
 
 	// Point
 	if (u_light_type == 1){
@@ -1100,6 +1104,84 @@ void main()
 
 	FragColor = color;
 }
+
+//------------------------------------------------------------
+\ssao.fs
+#version 330 core
+
+in vec2 v_uv;
+
+uniform sampler2D u_gb1_texture;
+uniform sampler2D u_depth_texture;
+
+uniform mat4 u_viewprojection;
+uniform mat4 u_inverse_viewprojection;
+uniform vec2 u_iRes;
+uniform vec3 u_points[64];
+
+//vec3 rotateY( float angle, vec3 delta )
+//{
+//	float s0 = sin(angle);
+//	float c0 = cos(angle);
+//	return vec3( delta.x * c0 - delta.z * s0, delta.y, delta.x * s0 + delta.z * c0  );
+//}
+
+
+out vec4 FragColor;
+void main()
+{
+	vec2 uv = gl_FragCoord.xy * u_iRes.xy;
+
+	float depth = texture( u_depth_texture, uv ).x;
+
+	//ignore pixels in the background
+	if(depth >= 1.0)
+	{
+		FragColor = vec4(1.0);
+		return;
+	}
+
+	vec4 screen_pos = vec4(uv.x*2.0-1.0, uv.y*2.0-1.0, depth*2.0-1.0, 1.0 );
+	vec4 proj_worldpos = u_inverse_viewprojection * screen_pos;
+	vec3 world_position = proj_worldpos.xyz / proj_worldpos.w;
+
+	const int samples = 64;
+	int num = samples; //num inicial de muestras que no estan ocluidas
+
+	//for every sample around the point
+	for( int i = 0; i < samples; ++i )
+	{
+		//compute is world position using the random
+		vec3 delta = u_points[i] * 10.0;
+		//float angle = gl_FragCoord.x * 1013.89 + gl_FragCoord.y * 1031.41;
+		//delta = rotateY( angle, delta );
+		vec3 p = world_position + delta;
+
+		//find the uv in the depth buffer of this point
+		vec4 proj = u_viewprojection * vec4(p,1.0);  // multiplicar por la view para estar en screen space
+		proj.xy /= proj.w; //convert to clipspace from homogeneous
+
+		//apply a tiny bias to its z before converting to clip-space
+		proj.z = (proj.z - 0.005) / proj.w;  // sin este bias un pixel se puede ocluir a si mismo
+		proj.xyz = proj.xyz * 0.5 + vec3(0.5); //to [0..1]
+
+		//read p true depth
+		float pdepth = texture( u_depth_texture, proj.xy ).x;
+
+		//compare true depth with its depth
+		float diff = proj.z - pdepth;
+		if( diff > 0.0 && diff < 0.001 ) //if true depth smaller, is inside
+			num--; //remove this point from the list of visible
+	}
+
+	//finally, compute the AO factor as the ratio of visible points
+	float ao = float(num) / float(samples);
+
+	FragColor = vec4(ao);
+
+}
+
+
 //------------------------------------------------------------
 \multi.fs
 

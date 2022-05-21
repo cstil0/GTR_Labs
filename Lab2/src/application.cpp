@@ -253,6 +253,7 @@ void Application::renderDebugGUI(void)
 	ImGui::Combo("Pipeline", (int*)&renderer->pipeline, "FORWARD\0DEFERRED", 2);
 	ImGui::Checkbox("Gamma", &renderer->gamma);
 	ImGui::Checkbox("Tonemapping", &renderer->tonemapping);
+	ImGui::Checkbox("Show SSAO", &renderer->show_ssao);
 	
 	if (ImGui::TreeNode("Debug Tools")) {
 		renderer->renderInMenu();
