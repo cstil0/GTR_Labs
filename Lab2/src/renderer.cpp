@@ -33,6 +33,7 @@ GTR::Renderer::Renderer()
 	show_buffers = false;
 
 	gbuffers_fbo = NULL;
+	illumination_fbo = NULL;
 	pipeline = FORWARD;
 	typeOfRender = eRenderPipeline::MULTIPASS;
 
@@ -47,6 +48,8 @@ GTR::Renderer::Renderer()
 
 	screen_texture = NULL;
 	screen_fbo = NULL;
+
+	ssao_fbo = NULL;
 }
 
 // --- Rendercalls manager functions ---
@@ -1014,13 +1017,14 @@ void GTR::Renderer::renderDeferred(Camera* camera)
 	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 	checkGLErrors();
 
+	Mesh* quad = Mesh::getQuad();
 	int width = Application::instance->window_width;
 	int height = Application::instance->window_height;
 	if (!gbuffers_fbo) {
 		//create and FBO
 		gbuffers_fbo = new FBO();
 		illumination_fbo = new FBO();
-		ao_fbo = new FBO();
+		ssao_fbo = new FBO();
 
 		//create 3 textures of 4 components
 		gbuffers_fbo->create(width, height,
@@ -1038,9 +1042,9 @@ void GTR::Renderer::renderDeferred(Camera* camera)
 
 		ssao_fbo->create(width, height, // MIRAR SI CON MENOS TAMAÑO NO PERDEMOS MUCHO
 			1, 			//three textures
-			GL_RGBA, 		//four channels
+			GL_LUMINANCE, 		// one channel, PUEDE DAR PROBLEMAS, SI DA PROBLEMAS COGER RGB
 			GL_UNSIGNED_BYTE, //1 byte
-			true);  
+			false);  
 	}
 
 	gbuffers_fbo->bind();
@@ -1064,8 +1068,21 @@ void GTR::Renderer::renderDeferred(Camera* camera)
 	gbuffers_fbo->unbind();
 
 	//screen_texture = illumination_fbo->color_textures[0];
+	Matrix44 inv_vp = camera->viewprojection_matrix;
+	inv_vp.inverse();
+
+	ssao_fbo->bind();
+
+	Shader* shader = Shader::Get("ssao"); 
+	shader->enable();
+	shader->setUniform("u_depth_texture", gbuffers_fbo->depth_texture, 4);
+	shader->setUniform("u_inverse_viewprojection", inv_vp);
+	shader->setUniform("u_iRes", Vector2(1.0 / (float)width, 1.0 / (float)height));
+
+	quad->render(GL_TRIANGLES);
 
 
+	ssao_fbo->unbind();
 
 
 	illumination_fbo->bind();
@@ -1077,7 +1094,6 @@ void GTR::Renderer::renderDeferred(Camera* camera)
 	glDisable(GL_DEPTH_TEST);
 
 	// UN QUAD ES UNA MESH QUE VA DE -1, 1 A 1,1N ??
-	Mesh* quad = Mesh::getQuad();
 	// GUARDAMOS ESTO EN UNA VARIABLE?
 	Mesh* sphere = Mesh::Get("data/meshes/sphere.obj", false, false);
 	Shader* shader = Shader::Get("deferred");  // si utilizamos el sphere tenemos que tener en cuenta la view projection
@@ -1091,8 +1107,6 @@ void GTR::Renderer::renderDeferred(Camera* camera)
 	shader->setUniform("u_depth_texture", gbuffers_fbo->depth_texture, 4);
 
 	//pass the inverse projection of the camera to reconstruct world pos.
-	Matrix44 inv_vp = camera->viewprojection_matrix;
-	inv_vp.inverse();
 	shader->setUniform("u_inverse_viewprojection", inv_vp);
 	//pass the inverse window resolution, this may be useful
 	shader->setUniform("u_iRes", Vector2(1.0 / (float)width, 1.0 / (float)height));
