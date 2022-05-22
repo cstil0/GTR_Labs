@@ -31,11 +31,14 @@ GTR::Renderer::Renderer()
 	debug_shadowmap = 7;
 	debug_texture = eTextureType::COMPLETE;
 	show_buffers = false;
+	show_ssao = false;
 
 	gbuffers_fbo = NULL;
+	ssao_fbo = NULL;
 	pipeline = FORWARD;
 	typeOfRender = eRenderPipeline::MULTIPASS;
 
+	random_points = generateSpherePoints(61, 1, false);
 
 	gamma = true;
 	tonemapping = true;
@@ -493,6 +496,10 @@ void Renderer::showGBuffers(int width, int height, Camera* camera) {
 	gbuffers_fbo->color_textures[3]->toViewport();
 
 	glViewport(0,0, width, height);
+
+	if (show_ssao)
+		ssao_fbo->color_textures[0]->toViewport();
+	
 	glEnable(GL_DEPTH_TEST);
 }
 
@@ -1014,12 +1021,19 @@ void GTR::Renderer::renderDeferred(Camera* camera)
 	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 	checkGLErrors();
 
+	// UN QUAD ES UNA MESH QUE VA DE -1, 1 A 1,1N ??
+	Mesh* quad = Mesh::getQuad();
+	//pass the inverse projection of the camera to reconstruct world pos.
+	Matrix44 inv_vp = camera->viewprojection_matrix;
+	inv_vp.inverse();
+
 	int width = Application::instance->window_width;
 	int height = Application::instance->window_height;
 	if (!gbuffers_fbo) {
 		//create and FBO
 		gbuffers_fbo = new FBO();
 		illumination_fbo = new FBO();
+		ssao_fbo = new FBO();
 
 		//create 3 textures of 4 components
 		gbuffers_fbo->create(width, height,
@@ -1034,6 +1048,12 @@ void GTR::Renderer::renderDeferred(Camera* camera)
 			GL_RGBA, 		//four channels
 			GL_UNSIGNED_BYTE, //1 byte
 			true);		//add depth_texture
+
+		ssao_fbo->create(width, height,
+			1, 			//three textures
+			GL_LUMINANCE, 		//NO ME HA QUEDADO MUY CLARO POR QUE LUMINANCE
+			GL_UNSIGNED_BYTE, //1 byte
+			false);		//add depth_texture
 	}
 
 	gbuffers_fbo->bind();
@@ -1056,6 +1076,23 @@ void GTR::Renderer::renderDeferred(Camera* camera)
 
 	gbuffers_fbo->unbind();
 
+	ssao_fbo->bind();
+	glDisable(GL_DEPTH_TEST);
+	glDisable(GL_BLEND);
+
+	Shader* shader_ssao = Shader::Get("ssao");
+	shader_ssao->enable();
+	shader_ssao->setUniform("u_gb1_texture", gbuffers_fbo->color_textures[1], 1);
+	shader_ssao->setUniform("u_depth_texture", gbuffers_fbo->depth_texture, 3);
+	shader_ssao->setUniform("u_inverse_viewprojection", inv_vp);
+	shader_ssao->setUniform("u_viewprojection", camera->viewprojection_matrix);
+	shader_ssao->setUniform("u_iRes", Vector2(1.0 / (float)width, 1.0 / (float)height));
+	shader_ssao->setUniform3Array("u_points", (float*)&random_points[0], random_points.size());
+
+	quad->render(GL_TRIANGLES);
+	
+	shader_ssao->disable();	ssao_fbo->unbind();
+
 	//screen_texture = illumination_fbo->color_textures[0];
 
 	illumination_fbo->bind();
@@ -1066,8 +1103,6 @@ void GTR::Renderer::renderDeferred(Camera* camera)
 	// ADEM�S LA ILLUMINATION FBO NO TIENE NADA EN DEPTH AHORA
 	glDisable(GL_DEPTH_TEST);
 
-	// UN QUAD ES UNA MESH QUE VA DE -1, 1 A 1,1N ??
-	Mesh* quad = Mesh::getQuad();
 	// GUARDAMOS ESTO EN UNA VARIABLE?
 	Mesh* sphere = Mesh::Get("data/meshes/sphere.obj", false, false);
 	Shader* shader = Shader::Get("deferred");  // si utilizamos el sphere tenemos que tener en cuenta la view projection
@@ -1079,10 +1114,8 @@ void GTR::Renderer::renderDeferred(Camera* camera)
 	shader->setUniform("u_gb1_texture", gbuffers_fbo->color_textures[1], 1);
 	shader->setUniform("u_gb3_texture", gbuffers_fbo->color_textures[3], 3);
 	shader->setUniform("u_depth_texture", gbuffers_fbo->depth_texture, 4);
+	shader->setUniform("u_ssao_texture", ssao_fbo->color_textures[0], 5);
 
-	//pass the inverse projection of the camera to reconstruct world pos.
-	Matrix44 inv_vp = camera->viewprojection_matrix;
-	inv_vp.inverse();
 	shader->setUniform("u_inverse_viewprojection", inv_vp);
 	//pass the inverse window resolution, this may be useful
 	shader->setUniform("u_iRes", Vector2(1.0 / (float)width, 1.0 / (float)height));
@@ -1188,6 +1221,33 @@ void GTR::Renderer::renderDeferred(Camera* camera)
 	glFrontFace(GL_CCW);
 }
 
+// FUNCIÓN PARA GENERAR PUNTOS RANDOM DE UNA ESFERA--PARA COGER LAS DIRECCIONES DEL AO
+std::vector<Vector3> Renderer::generateSpherePoints(int num,float radius, bool hemi)
+{
+	std::vector<Vector3> points;
+	points.resize(num);
+	for (int i = 0; i < num; i += 3)
+	{
+		Vector3& p = points[i];
+		float u = random();
+		float v = random();
+		float theta = u * 2.0 * PI;
+		float phi = acos(2.0 * v - 1.0);
+		float r = cbrt(random() * 0.9 + 0.1) * radius;
+		float sinTheta = sin(theta);
+		float cosTheta = cos(theta);
+		float sinPhi = sin(phi);
+		float cosPhi = cos(phi);
+		p.x = r * sinPhi * cosTheta;
+		p.y = r * sinPhi * sinTheta;
+		p.z = r * cosPhi;
+		if (hemi && p.z < 0)
+			p.z *= -1.0;
+	}
+	return points;
+}
+
+
 // -- Upload to shader functions --
 
 void Renderer::uploadLightToShader(GTR::LightEntity* light, Shader* shader, Vector3 ambient_light, int shadow_i) {
@@ -1208,7 +1268,7 @@ void Renderer::uploadLightToShader(GTR::LightEntity* light, Shader* shader, Vect
 	else if (light->light_type == LightEntity::eTypeOfLight::DIRECTIONAL)
 		shader->setUniform("u_light_direction", (light->model.getTranslation() - light->target));
 
-	if (light->shadowmap && light->cast_shadows) {
+	if (shadowmap && light->cast_shadows) {
 		shader->setUniform("u_light_cast_shadows", 1);
 		shader->setUniform("u_light_shadowmap", shadowmap, 8);
 		shader->setUniform("u_light_shadowmap_vpm", light->light_camera->viewprojection_matrix);
@@ -1529,8 +1589,10 @@ void GTR::Renderer::renderInMenu() {
 	ImGui::Checkbox("Show Shadowmap", &show_shadowmap);
 	if (pipeline == ePipeline::DEFERRED)
 		ImGui::Checkbox("Show GBuffers", &show_buffers);
+	ImGui::Checkbox("Show SSAO", &show_ssao);
 	ImGui::Combo("Shadowmaps", &debug_shadowmap, "SPOT1\0SPOT2\0POINT1\0POINT2\0POINT3\0POINT4\0POINT5\0DIRECTIONAL");
 	ImGui::Combo("Textures", &debug_texture, "COMPLETE\0NORMAL\0OCCLUSION\0EMISSIVE");
+
 }
 
 

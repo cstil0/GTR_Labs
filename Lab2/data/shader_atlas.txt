@@ -5,7 +5,8 @@ multi_pass basic.vs light_multi_pass.fs
 single_pass basic.vs light_single_pass.fs
 gbuffers basic.vs gbuffers.fs
 deferred basic.vs deferred.fs
-deferred_ambient quad.vs deferred.fs
+deferred_ambient quad.vs deferred.fs // HAY QUE MIRARLO
+ssao quad.vs ssao.fs
 col_corr quad.vs col_corr.fs
 depth quad.vs depth.fs
 multi basic.vs multi.fs
@@ -152,8 +153,14 @@ void testShadowMap(inout LightStruct lc){
 	//from clip space to uv space
 	shadow_uv = shadow_uv * 0.5 + vec2(0.5);
 
-	float real_depth = getRealDepth(proj_pos);
+	//float real_depth = getRealDepth(proj_pos);
 	
+	//get point depth [-1 .. +1] in non-linear space
+	float real_depth = (proj_pos.z - u_light_shadow_bias) / proj_pos.w;
+	
+	//normalize from [-1..+1] to [0..+1] still non-linear
+	real_depth = real_depth * 0.5 + 0.5;
+
 	//read depth from depth buffer in [0..+1] non-linear
 	//vec4 scale_factor = assignMapPiece(u_shadow_i);
 	vec4 scale_factor = u_map_piece;
@@ -800,6 +807,8 @@ uniform sampler2D u_gb1_texture;
 uniform sampler2D u_gb2_texture;
 uniform sampler2D u_gb3_texture;
 uniform sampler2D u_depth_texture;
+uniform sampler2D u_ssao_texture;
+
 //uniform int u_normal_text_bool;
 uniform int u_texture2show;
 
@@ -839,7 +848,8 @@ float getRealDepth(vec4 proj_pos){
 	vec4 proj_worldpos = u_inverse_viewprojection * screen_pos;
 	//return proj_worldpos.xyz / proj_worldpos.w;
 	float real_depth = (proj_worldpos.z - u_light_shadow_bias) / proj_worldpos.w;
-	return real_depth * 0.5 + 0.5;
+	return depth;
+	//return real_depth * 0.5 + 0.5;
 }
 
 #include normalmap_functions
@@ -885,7 +895,11 @@ void main()
 		color.xyz = degamma(color.xyz);
 	}
 
-	vec3 light = vec3(u_ambient_light);
+	float ao_factor = texture(u_ssao_texture, uv).x;
+	// STEP QUE VA DE 0.4 A 0.6 DE FORMA QUE TODO LO QUE ESTÉ DEBAJO DE 0.4 SERÁ 0 Y >0.6 = 1 -- 
+	// DE ESTA FORMA CONSEGUIMOS MÁS CONTRASTE
+	ao_factor = smoothstep(0.4, 0.6, ao_factor);
+	vec3 light = vec3(u_ambient_light); //* ao_factor;
 
 	// Point
 	if (u_light_type == 1){
@@ -922,11 +936,92 @@ void main()
 
 	color.xyz *= light;
 
-	//FragColor = vec4(depth, depth, depth, 1.0);
+	//FragColor = vec4(vec3(u_ambient_light) * ao_factor, 1.0);
 	//FragColor = vec4(u_light_direction, 1.0);
-	//FragColor = vec4(LightComp.world_position, 1.0);
+	//FragColor = vec4(gb3_color);
 
 	FragColor = color;
+}
+
+//------------------------------------------------------------
+\ssao.fs
+#version 330 core
+
+in vec2 v_uv;
+
+uniform vec3 u_camera_position;
+uniform vec4 u_color;
+uniform mat4 u_model;
+uniform mat4 u_viewprojection;
+
+uniform sampler2D u_gb1_texture;
+uniform sampler2D u_depth_texture;
+
+uniform mat4 u_inverse_viewprojection;
+uniform vec2 u_iRes;
+
+// CUIDADO CUANDO EMPEZAMOS A SUBIR MUCHOS UNIFORMS POR QUÉ EL BLOQUE DE UNIFORMS SE GUARDA EN UNA CACHÉ MUY CONCRETA
+// QUE TIENE UNA MEMORIA LIMITADA. LA MEMORIA DE ESA CACHE DEPENDE DE LA GPU, POR LO QUE PODRÍA FUNCIONAR EN ALGUNAS Y PASARSE EN OTRAS
+uniform vec3 u_points[64];
+
+out vec4 FragColor;
+
+void main()
+{
+	// ESTA UV TIENE MÁS SENTIDO QUE TENER EN CUENTA V_UV POR QUE TIENE EN CUENTA QUE PIXEL ESTAMOS PINTANDO EN LA PANTALLA
+	vec2 uv = gl_FragCoord.xy * u_iRes.xy;
+	float depth = texture(u_depth_texture, uv).x;
+
+	// ignore pixels in the background
+	if (depth >= 1.0){
+		FragColor = vec4(1.0);
+		return;
+	}
+
+
+	vec4 gb1_color = texture(u_gb1_texture, uv);
+
+	vec4 screen_pos = vec4(uv.x*2.0-1.0, uv.y*2.0-1.0, depth*2.0-1.0, 1.0);
+	vec4 proj_worldpos = u_inverse_viewprojection * screen_pos;
+	vec3 world_pos = proj_worldpos.xyz / proj_worldpos.w;
+
+	// ITERAMOS 64 VECES Y VAMOS COGIENDO SAMPLES DE ALREDEDOR--> ALGORITMO:
+	// ENCONTRAR UN PUNTO CERCA DEL WORLD POS, EVALUAR DONDE CAE EN PANTALLA, MIRAR CUAL SERÍA SU Z
+	// Y COMPARAR CON LA Z DE ESE PIXEL. SI ES MENOR, OSCURECEMOS AMBIENT
+	
+	// USAMOS 64 MUESTRAS Y PARA CADA MUESTRA COGEMOS WORLD POS Y NOS MOVEMOS EN UNA DIRECCIÓN--TENEMOS UN ARRAY CON
+	// DIRECCIONES SOBRE UNA ESFERA. TENEMOS QUE ENVIAR ESAS POSICIONES DESDE EL SHADER -- MEJOR CALCULARLO POR CPU Y ENVIARLO
+	//lets use 64 samples
+	const int samples = 64;
+	int num = samples; //num samples that passed the are outside
+	//for every sample around the point
+	for( int i = 0; i < samples; ++i )
+	{
+		//compute is world position using the random position generated in the sphere
+		// 10 POR QUÉ A JAVI LE FUNCIONÓ BIEN ASÍ PARA EL TIPO DE ESCENA QUE ESTAMOS HACIENDO
+		vec3 p = world_pos + u_points[i] * 10.0;
+		
+		// PROYECTAMOS ESE PUNTO A ESPACIO DE PANTALLA
+		//find the uv in the depth buffer of this point
+		vec4 proj = u_viewprojection * vec4(p,1.0);
+		proj.xy /= proj.w; //convert to clipspace from homogeneous
+		//apply a tiny bias to its z before converting to clip-space
+		proj.z = (proj.z - 0.005) / proj.w;
+		proj.xyz = proj.xyz * 0.5 + vec3(0.5); //to [0..1]
+		//read point true depth
+		float pdepth = texture( u_depth_texture, proj.xy ).x;
+
+		//compare true depth with its depth
+		float diff = proj.z - pdepth;
+		// SI ESTÁ CERCA DE LA ZONA SE OCLUYE, SI ESTÁ MUY LEJOS DE LA ZONA (LA Z) YA NO SE OCLUYE -- USADO PARA ELIMINAR LOS PUNTOS ESOS NEGROS DEL BORDE 
+		if( diff > 0.0 && diff < 0.001 ) //if true depth smaller, is inside
+		// SI EL PIXEL ESTÁ OCLUIDO TENIENDO EN CUENTA EL PUNTO DE LA ESFERA, LE DECREMENTAMOS EL NUMERO DE SAMPLES QUE HAN PASADO EL AMBIENT OCCLUSION
+			num--; //remove this point from the list of visible
+	}
+	//finally, compute the AO factor as the ratio of visible points
+	float ao = float(num) / float(samples);
+
+	FragColor = vec4(ao);
 }
 
 //------------------------------------------------------------

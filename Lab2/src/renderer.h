@@ -69,9 +69,13 @@ namespace GTR {
 		int debug_shadowmap;
 		int debug_texture;
 		bool show_buffers;
+		bool show_ssao;
 
 		FBO* gbuffers_fbo;
 		FBO* illumination_fbo;
+		FBO* ssao_fbo;
+
+		std::vector<Vector3> random_points;
 
 		// color correction
 		bool gamma;
@@ -101,6 +105,8 @@ namespace GTR {
 		void generateShadowmap(LightEntity* light, int index);
 		// BORRAR
 		void generateScreenTexture(Mesh* mesh);
+
+		std::vector<Vector3> generateSpherePoints(int num, float radius, bool hemi);
 
 		// -- Render functions --
 		//renders several elements of the scene
@@ -137,6 +143,7 @@ namespace GTR {
 		// BUSCAR COMO METER INCLUDE EN EL SHADER PARA NO REPETIR FUNCIONES
 		// ESFERA QUAD DEFERRED
 	};
+
 
 	Texture* CubemapFromHDRE(const char* filename);
 
