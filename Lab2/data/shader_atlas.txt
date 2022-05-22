@@ -1112,6 +1112,7 @@ void main()
 in vec2 v_uv;
 
 uniform sampler2D u_gb1_texture;
+uniform sampler2D u_gb3_texture;
 uniform sampler2D u_depth_texture;
 
 uniform mat4 u_viewprojection;
@@ -1119,12 +1120,12 @@ uniform mat4 u_inverse_viewprojection;
 uniform vec2 u_iRes;
 uniform vec3 u_points[64];
 
-//vec3 rotateY( float angle, vec3 delta )
-//{
-//	float s0 = sin(angle);
-//	float c0 = cos(angle);
-//	return vec3( delta.x * c0 - delta.z * s0, delta.y, delta.x * s0 + delta.z * c0  );
-//}
+vec3 rotateY( float angle, vec3 delta )
+{
+	float s0 = sin(angle);
+	float c0 = cos(angle);
+	return vec3( delta.x * c0 - delta.z * s0, delta.y, delta.x * s0 + delta.z * c0  );
+}
 
 
 out vec4 FragColor;
@@ -1141,20 +1142,22 @@ void main()
 		return;
 	}
 
+	vec4 original_point = gl_FragCoord;
+
 	vec4 screen_pos = vec4(uv.x*2.0-1.0, uv.y*2.0-1.0, depth*2.0-1.0, 1.0 );
 	vec4 proj_worldpos = u_inverse_viewprojection * screen_pos;
 	vec3 world_position = proj_worldpos.xyz / proj_worldpos.w;
 
 	const int samples = 64;
-	int num = samples; //num inicial de muestras que no estan ocluidas
+	float num = samples; //num inicial de muestras que no estan ocluidas
 
 	//for every sample around the point
 	for( int i = 0; i < samples; ++i )
 	{
 		//compute is world position using the random
 		vec3 delta = u_points[i] * 10.0;
-		//float angle = gl_FragCoord.x * 1013.89 + gl_FragCoord.y * 1031.41;
-		//delta = rotateY( angle, delta );
+		float angle = gl_FragCoord.x * 1013.89 + gl_FragCoord.y * 1031.41;
+		delta = rotateY( angle, delta );
 		vec3 p = world_position + delta;
 
 		//find the uv in the depth buffer of this point
@@ -1171,13 +1174,21 @@ void main()
 		//compare true depth with its depth
 		float diff = proj.z - pdepth;
 		if( diff > 0.0 && diff < 0.001 ) //if true depth smaller, is inside
-			num--; //remove this point from the list of visible
+		{
+			float x_mod = pow((u_points[i].x), 2);
+			float y_mod = pow((u_points[i].y), 2);
+			float z_mod = pow((u_points[i].z), 2);
+			float dist = sqrt(x_mod + y_mod + z_mod);
+
+			num = num - dist; //remove this point from the list of visible
+		}
 	}
 
 	//finally, compute the AO factor as the ratio of visible points
 	float ao = float(num) / float(samples);
 
-	FragColor = vec4(ao);
+	//float ambient_factor = texture( u_gb3_texture, uv ).x;
+	FragColor = vec4(ao); // * ambient_factor;
 
 }
 

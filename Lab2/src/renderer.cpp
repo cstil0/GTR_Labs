@@ -1080,20 +1080,18 @@ void GTR::Renderer::renderDeferred(Camera* camera)
 
 	Shader* shader = Shader::Get("ssao"); 
 	shader->enable();
-	shader->setUniform("u_gb1_texture", gbuffers_fbo->color_textures[1], 1);
-	shader->setUniform("u_depth_texture", gbuffers_fbo->depth_texture, 4);
+	shader->setUniform("u_gb1_texture", gbuffers_fbo->color_textures[1], 0);
+	shader->setUniform("u_gb3_texture", gbuffers_fbo->color_textures[3], 1);
+	shader->setUniform("u_depth_texture", gbuffers_fbo->depth_texture, 2);
 	shader->setUniform("u_viewprojection", camera->viewprojection_matrix);
 	shader->setUniform("u_inverse_viewprojection", inv_vp);
 	shader->setUniform("u_iRes", Vector2(1.0 / (float)width, 1.0 / (float)height));
 
 	shader->setUniform3Array("u_points", (float*)&random_points[0],random_points.size());
 
-
 	quad->render(GL_TRIANGLES);
 
-
 	ssao_fbo->unbind();
-
 
 	illumination_fbo->bind();
 	glClearColor(scene->background_color.x, scene->background_color.y, scene->background_color.z, 1.0);
