@@ -153,7 +153,13 @@ void testShadowMap(inout LightStruct lc){
 	//from clip space to uv space
 	shadow_uv = shadow_uv * 0.5 + vec2(0.5);
 
-	float real_depth = getRealDepth(proj_pos);
+	//get point depth [-1 .. +1] in non-linear space
+	float real_depth = (proj_pos.z - u_light_shadow_bias) / proj_pos.w;
+	
+	//normalize from [-1..+1] to [0..+1] still non-linear
+	real_depth = real_depth * 0.5 + 0.5;
+
+	//float real_depth = getRealDepth(proj_pos);
 	
 	//read depth from depth buffer in [0..+1] non-linear
 	//vec4 scale_factor = assignMapPiece(u_shadow_i);

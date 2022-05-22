@@ -1247,7 +1247,7 @@ void Renderer::uploadLightToShader(GTR::LightEntity* light, Shader* shader, Vect
 	else if (light->light_type == LightEntity::eTypeOfLight::DIRECTIONAL)
 		shader->setUniform("u_light_direction", (light->model.getTranslation() - light->target));
 
-	if (light->shadowmap && light->cast_shadows) {
+	if (shadowmap && light->cast_shadows) {
 		shader->setUniform("u_light_cast_shadows", 1);
 		shader->setUniform("u_light_shadowmap", shadowmap, 8);
 		shader->setUniform("u_light_shadowmap_vpm", light->light_camera->viewprojection_matrix);
