@@ -251,6 +251,7 @@ void Application::renderDebugGUI(void)
 	ImGui::ColorEdit3("Ambient Light", scene->ambient_light.v);
 	ImGui::Combo("Lights shader", &renderer->typeOfRender, "SINGLEPASS\0MULTIPASS", 2);// , GTR::Scene::eRenderPipeline::MULTIPASS));
 	ImGui::Combo("Pipeline", (int*)&renderer->pipeline, "FORWARD\0DEFERRED", 2);
+	ImGui::Checkbox("PBR", &renderer->pbr);
 	ImGui::Checkbox("Gamma", &renderer->gamma);
 	ImGui::Checkbox("Tonemapping", &renderer->tonemapping);
 	ImGui::Checkbox("Show SSAO", &renderer->show_ssao);
@@ -259,7 +260,6 @@ void Application::renderDebugGUI(void)
 		renderer->renderInMenu();
 		ImGui::TreePop();
 	}
-
 	if (ImGui::TreeNode("Color Correction")) {
 		ImGui::SliderFloat("Average Exposure", &renderer->averagelum, 0.5, 100);
 		ImGui::SliderFloat("White Intensity", &renderer->lumwhite2, 0.01, 1);

@@ -34,7 +34,7 @@ GTR::Renderer::Renderer()
 
 	gbuffers_fbo = NULL;
 	illumination_fbo = NULL;
-	pipeline = FORWARD;
+	pipeline = DEFERRED;
 	typeOfRender = eRenderPipeline::MULTIPASS;
 
 	gamma = true;
@@ -996,7 +996,7 @@ void GTR::Renderer::renderForward(Camera* camera)
 		col_corr->setUniform("u_average_lum", averagelum);
 		col_corr->setUniform("u_scale", scale);
 		col_corr->setUniform("u_depth_texture", screen_fbo->depth_texture, 1);
-		
+
 		Mesh* quad = Mesh::getQuad();
 		quad->render(GL_TRIANGLES);
 		col_corr->disable();
@@ -1130,7 +1130,7 @@ void GTR::Renderer::renderDeferred(Camera* camera)
 	shader->setUniform("u_depth_texture", gbuffers_fbo->depth_texture, 4);
 	shader->setUniform("u_ssao_texture", ssao_fbo->color_textures[0], 5);
 	
-
+	shader->setUniform("u_camera_position", camera->eye);
 	//pass the inverse projection of the camera to reconstruct world pos.
 	shader->setUniform("u_inverse_viewprojection", inv_vp);
 	//pass the inverse window resolution, this may be useful
@@ -1229,6 +1229,7 @@ void GTR::Renderer::renderDeferred(Camera* camera)
 		col_corr->setUniform("u_lumwhite2", lumwhite2);
 		col_corr->setUniform("u_average_lum", averagelum);
 		col_corr->setUniform("u_scale", scale);
+
 		//col_corr->setUniform("u_screen_texture", screen_texture, 0);
 		Mesh* quad_final = Mesh::getQuad();
 		quad_final->render(GL_TRIANGLES);

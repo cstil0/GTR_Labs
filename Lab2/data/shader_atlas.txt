@@ -790,14 +790,19 @@ void main()
 	float occlusion_factor = texture( u_met_rough_texture, v_uv ).x;
 	// Occlusion can be either in the met_rou or occlusion texture
 	occlusion_factor *= texture( u_occlusion_texture, v_uv ).x;
-	vec3 occlusion = vec3(occlusion_factor);
+
+	// Metalness
+	float metal_factor = texture(u_met_rough_texture, v_uv).y;
+	// Roughness
+	float roughness_factor = texture(u_met_rough_texture, v_uv).z;
 
 	// don't need to save the alpha
 	GB0 = vec4(color.xyz, 1.0);
 	// to recover negative values
 	GB1 = vec4(N * 0.5 + vec3(0.5), 1.0);
 	GB2 = vec4(emissive, 1.0);
-	GB3 = vec4(occlusion, 1.0);
+	// CREAR GBUFFERS SEPARADOS..??
+	GB3 = vec4(occlusion_factor, metal_factor, roughness_factor, 1.0);
 }
 
 //------------------------------------------------------------
@@ -1060,6 +1065,7 @@ void main(){
 	if (depth == 1.0){
 		discard;
 	}
+
 	if (u_tonemapping == 1){
 		float lum = dot(rgb, vec3(0.2126, 0.7152, 0.0722));
 		float L = (u_scale * u_average_lum) * lum;
@@ -1223,8 +1229,8 @@ void main()
 
 	vec4 gb0_color = texture(u_gb0_texture, uv);
 	vec4 gb1_color = texture(u_gb1_texture, uv);
-	vec4 gb2_color = texture(u_gb2_texture, uv);  // occ-met-rough
-	vec4 gb3_color = texture(u_gb3_texture, uv);
+	vec4 gb2_color = texture(u_gb2_texture, uv);  
+	vec4 gb3_color = texture(u_gb3_texture, uv);// occ-met-rough
 
 	float depth = texture( u_depth_texture, uv ).x;
 	vec4 screen_pos = vec4(uv.x*2.0-1.0, uv.y*2.0-1.0, depth*2.0-1.0, 1.0);
@@ -1266,6 +1272,7 @@ void main()
 	//metallic materials do not have diffuse
 	vec3 diffuseColor = (1.0 - metalness) * color.xyz;
 
+	// METER EN UNA FUNCIÓN
 	LightComp.V = normalize(u_camera_position - LightComp.world_position);
 	LightComp.H = normalize(vec3((LightComp.V + LightComp.L) / 2));
 
@@ -1309,6 +1316,7 @@ void main()
 	//color.xyz = gamma(color.xyz);
 
 	FragColor = color;
+	//FragColor = vec4(LightComp.LdotH);
 }
 
 //------------------------------------------------------------
