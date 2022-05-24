@@ -947,6 +947,7 @@ void Renderer::renderFlatMesh(const Matrix44 model, Mesh* mesh, GTR::Material* m
 void GTR::Renderer::renderForward(Camera* camera)
 {
 	Scene* scene = Scene::instance;
+
 	if (!screen_fbo) {
 		screen_texture = new Texture();
 		screen_fbo = new FBO();
@@ -998,14 +999,12 @@ void GTR::Renderer::renderForward(Camera* camera)
 		quad->render(GL_TRIANGLES);
 		col_corr->disable();
 
-
 		glEnable(GL_DEPTH_TEST);
 	}
 
-
-	glViewport(0, 0, 256, 256);
-	screen_texture->toViewport();
-	glViewport(0, 0, Application::instance->window_width, Application::instance->window_height);
+	//glViewport(0, 0, 256, 256);
+	//screen_texture->toViewport();
+	//glViewport(0, 0, Application::instance->window_width, Application::instance->window_height);
 }
 
 
@@ -1128,8 +1127,19 @@ void GTR::Renderer::renderDeferred(Camera* camera)
 	glEnable(GL_CULL_FACE);
 
 	if (!lights.size()) {
-		shader->setUniform("u_light_color", Vector3());
-		sphere->render(GL_TRIANGLES);
+		shader->disable();
+		// Creo otro shader por qué ahora pintaremos un quad en lugar de esferas, y entonces necesitaremos el quad.vs y las uv habituales de la textura
+		Shader* shader_ambient = Shader::Get("deferred_ambient");
+		shader_ambient->enable();
+		shader_ambient->setUniform("u_ambient_light", scene->ambient_light);
+		shader_ambient->setUniform("u_gb0_texture", gbuffers_fbo->color_textures[0], 0);
+		shader_ambient->setUniform("u_gb1_texture", gbuffers_fbo->color_textures[1], 1);
+		shader_ambient->setUniform("u_gb2_texture", gbuffers_fbo->color_textures[2], 2);
+		shader_ambient->setUniform("u_gb3_texture", gbuffers_fbo->color_textures[3], 3);
+		shader_ambient->setUniform("u_depth_texture", gbuffers_fbo->depth_texture, 4);
+		//shader_ambient->setUniform("u_light_color", Vector3(0.0, 0.0, 0.0));
+		quad->render(GL_TRIANGLES);
+		shader_ambient->disable();
 	}
 	int i_shadow = 0;
 	for (int i = 0; i < lights.size(); i++) {
@@ -1188,25 +1198,34 @@ void GTR::Renderer::renderDeferred(Camera* camera)
 
 	illumination_fbo->unbind();
 	//gbuffers_fbo->depth_texture->toViewport();
+	shader->disable();
 
 	glDisable(GL_BLEND);
 
-	Shader* col_corr = Shader::Get("col_corr");
-	col_corr->enable();
-	col_corr->setUniform("u_screen_texture", illumination_fbo->color_textures[0], 0);
-	col_corr->setUniform("u_gamma", gamma);
-	col_corr->setUniform("u_tonemapping", tonemapping);
-	col_corr->setUniform("u_lumwhite2", lumwhite2);
-	col_corr->setUniform("u_average_lum", averagelum);
-	col_corr->setUniform("u_scale", scale);
-	//col_corr->setUniform("u_screen_texture", screen_texture, 0);
-	Mesh* quad_final = Mesh::getQuad();
-	quad_final->render(GL_TRIANGLES);
-	col_corr->disable();
+	// CANVIAR GAMMA BOOL A COL_COR
+	// PONER ESTE BOOL FUERA TAMBIÉN PARA MULTI Y SINGLE (CREO QUE ES MÁS EFICIENTE)
+	if (gamma) {
+		Shader* col_corr = Shader::Get("col_corr");
+		col_corr->enable();
+		col_corr->setUniform("u_screen_texture", illumination_fbo->color_textures[0], 0);
+		col_corr->setUniform("u_gamma", gamma);
+		col_corr->setUniform("u_tonemapping", tonemapping);
+		col_corr->setUniform("u_lumwhite2", lumwhite2);
+		col_corr->setUniform("u_average_lum", averagelum);
+		col_corr->setUniform("u_scale", scale);
+		//col_corr->setUniform("u_screen_texture", screen_texture, 0);
+		Mesh* quad_final = Mesh::getQuad();
+		quad_final->render(GL_TRIANGLES);
+		col_corr->disable();
 
-	glViewport(0,0,256,256);
-	illumination_fbo->color_textures[0]->toViewport();
-	glViewport(0, 0, Application::instance->window_width, Application::instance->window_height);
+	}
+	else {
+		illumination_fbo->color_textures[0]->toViewport();
+	}
+
+	//glViewport(0,0,256,256);
+	//illumination_fbo->color_textures[0]->toViewport();
+	//glViewport(0, 0, Application::instance->window_width, Application::instance->window_height);
 	//illumination_fbo->color_textures[0]->toViewport();
 
 	//screen_texture->toViewport();
@@ -1458,8 +1477,9 @@ void Renderer::setMultipassParameters(GTR::Material* material, Shader* shader, M
 
 	if (!lights.size()) {
 		shader->setUniform("u_ambient_light", ambient_light);
-		mesh->render(GL_TRIANGLES);
+		shader->setUniform("u_light_color", Vector3(0.0, 0.0, 0.0));
 
+		mesh->render(GL_TRIANGLES);
 	}
 
 	int lshadow_count = 0;

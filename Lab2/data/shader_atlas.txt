@@ -5,7 +5,7 @@ multi_pass basic.vs light_multi_pass.fs
 single_pass basic.vs light_single_pass.fs
 gbuffers basic.vs gbuffers.fs
 deferred basic.vs deferred.fs
-deferred_ambient quad.vs deferred.fs
+deferred_ambient quad.vs deferred_ambient.fs
 deferred_pbr quad.vs deferred_pbr.fs
 col_corr quad.vs col_corr.fs
 ssao quad.vs ssao.fs
@@ -278,7 +278,7 @@ void testShadowMap(inout LightStruct lc, int i, int sh_i){
 	shadow_uv = shadow_uv * 0.5 + vec2(0.5);
 
 	//get point depth [-1 .. +1] in non-linear space
-	float real_depth = (proj_pos.z - u_lights_shadow_bias[sh_i]) / proj_pos.w;
+	float real_depth = (proj_pos.z - u_lights_shadow_bias[i]) / proj_pos.w;
 	
 	//normalize from [-1..+1] to [0..+1] still non-linear
 	real_depth = real_depth * 0.5 + 0.5;
@@ -788,6 +788,75 @@ void main()
 }
 
 //------------------------------------------------------------
+\deferred_ambient.fs
+
+#version 330 core
+
+in vec2 v_uv;
+
+uniform vec3 u_camera_position;
+uniform vec4 u_color;
+uniform float u_time;
+uniform float u_alpha_cutoff;
+
+uniform mat4 u_model;
+uniform mat4 u_viewprojection;
+
+uniform sampler2D u_gb0_texture;
+//uniform sampler2D u_gb1_texture;
+uniform sampler2D u_gb2_texture;
+uniform sampler2D u_gb3_texture;
+//uniform sampler2D u_depth_texture;
+uniform sampler2D u_ssao_texture;
+
+uniform mat4 u_inverse_viewprojection;
+uniform vec2 u_iRes;
+
+// Light parameters
+uniform vec3 u_ambient_light;
+
+// Color correction
+uniform int u_gamma;
+
+out vec4 FragColor;
+
+#include degamma
+
+
+void main()
+{	
+	vec2 uv = v_uv;
+
+	vec4 gb0_color = texture(u_gb0_texture, uv);
+	//vec4 gb1_color = texture(u_gb1_texture, uv);
+	vec4 gb2_color = texture(u_gb2_texture, uv);
+	vec4 gb3_color = texture(u_gb3_texture, uv);
+
+	vec4 color = vec4(gb0_color.xyz, 1.0);
+
+	if (u_gamma == 1){
+		color.xyz = degamma(color.xyz);
+	}
+
+	float ao_factor = texture(u_ssao_texture, uv).x;
+
+	vec3 light = vec3(u_ambient_light) * ao_factor;
+
+	// Apply other textures
+	// Emissive
+	light += gb2_color.xyz;
+
+	// Occlusion
+	// Occlusion value is only in one coordinate
+	light *= gb3_color.x;
+
+	color.xyz *= light;
+
+	//FragColor = vec4(light, 1.0);
+	FragColor = color;
+}
+
+//------------------------------------------------------------
 \deferred.fs
 #version 330 core
 
@@ -937,7 +1006,7 @@ void main()
 	//FragColor = vec4(depth, depth, depth, 1.0);
 	//FragColor = vec4(u_light_direction, 1.0);
 	//FragColor = vec4(LightComp.world_position, 1.0);
-	//FragColor = gb0_color;
+	//FragColor = texture(u_gb1_texture, v_uv);
 	FragColor = color;
 }
 
@@ -993,6 +1062,9 @@ void main(){
 \deferred_pbr.fs
 #version 330 core
 
+#define PI 3.14159265358979323846
+#define RECIPROCAL_PI 0.3183098861837697
+
 in vec2 v_uv;
 
 uniform vec3 u_camera_position;
@@ -1003,7 +1075,6 @@ uniform float u_alpha_cutoff;
 // to linearize depth
 uniform vec2 u_camera_nearfar;
 
-// YA NO TENEMOS TEXTURAS DEL MATERIAL -- AHORA TENEMOS LAS TEXTURAS DEL GBUFFER
 uniform sampler2D u_gb0_texture;
 uniform sampler2D u_gb1_texture;
 uniform sampler2D u_gb2_texture;
@@ -1031,32 +1102,13 @@ uniform int u_light_cast_shadows;
 uniform sampler2D u_light_shadowmap;
 uniform mat4 u_light_shadowmap_vpm;
 uniform float u_light_shadow_bias;
+uniform vec4 u_map_piece;
 
 out vec4 FragColor;
 
-#include degamma
+#include normalmap_functions
 #include light_functions_multi
-
-//this is the cook torrance specular reflection model
-vec3 specularBRDF( float roughness, vec3 f0, float NoH, float NoV, float NoL, float LoH )
-{
-	float a = roughness * roughness;
-
-	// Normal Distribution Function
-	float D = D_GGX( NoH, a );
-
-	// Fresnel Function
-	vec3 F = F_Schlick( LoH, f0 );
-
-	// Visibility Function (shadowing/masking)
-	float G = G_Smith( NoV, NoL, roughness );
-		
-	// Norm factor
-	vec3 spec = D * G * F;
-	spec /= (4.0 * NoL * NoV + 1e-6);
-
-	return spec;
-}
+#include degamma
 
 // Normal Distribution Function using GGX Distribution
 float D_GGX (const in float NoH, const in float linearRoughness )
@@ -1067,8 +1119,7 @@ float D_GGX (const in float NoH, const in float linearRoughness )
 }
 
 // Fresnel term with scalar optimization(f90=1)
-float F_Schlick( const in float VoH, 
-const in float f0)
+float F_Schlick( const in float VoH, const in float f0)
 {
 	float f = pow(1.0 - VoH, 5.0);
 	return f0 + (1.0 - f0) * f;
@@ -1085,16 +1136,47 @@ float G_Smith( float NdotV, float NdotL, float roughness)
 	return GGX(NdotL, k) * GGX(NdotV, k);
 }
 
-#define RECIPROCAL_PI 0.3183098861837697
-
 // Diffuse Reflections: Disney BRDF using retro-reflections using F term, this is much more complex!!
 float Fd_Burley ( const in float NoV, const in float NoL, const in float LoH, const in float linearRoughness)
 {
         float f90 = 0.5 + 2.0 * linearRoughness * LoH * LoH;
-        float lightScatter = F_Schlick(NoL, 1.0, f90);
-        float viewScatter  = F_Schlick(NoV, 1.0, f90);
+		// REVISAR
+		float lightScatter = F_Schlick(NoL, f90);
+        float viewScatter  = F_Schlick(NoV, f90);
+
+        //float lightScatter = F_Schlick(NoL, 1.0, f90);
+        //float viewScatter  = F_Schlick(NoV, 1.0, f90);
         return lightScatter * viewScatter * RECIPROCAL_PI;
 }
+
+//this is the cook torrance specular reflection model
+vec3 specularBRDF( float roughness, vec3 f0, float NoH, float NoV, float NoL, float LoH )
+{
+	float a = roughness * roughness;
+
+	// Normal Distribution Function
+	float D = D_GGX( NoH, a );
+
+	// Fresnel Function
+	// REVISAR
+	float F = F_Schlick( LoH, f0.x );
+	//vec3 F = F_Schlick( LoH, f0 );
+
+	// Visibility Function (shadowing/masking)
+	float G = G_Smith( NoV, NoL, roughness );
+		
+	// Norm factor
+	// REVISAR
+	float spec = D * G * F;
+	// vec3 spec = D * G * F;
+	spec /= (4.0 * NoL * NoV + 1e-6);
+
+	// REVISAR
+	return vec3(spec);
+	//return spec;
+}
+
+
 
 void main()
 {
@@ -1193,7 +1275,7 @@ void main()
 
 	color.xyz *= light;
 
-	color.xyz = gamma(color.xyz);
+	//color.xyz = gamma(color.xyz);
 
 	FragColor = color;
 }
