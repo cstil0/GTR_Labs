@@ -937,7 +937,7 @@ void main()
 	//FragColor = vec4(depth, depth, depth, 1.0);
 	//FragColor = vec4(u_light_direction, 1.0);
 	//FragColor = vec4(LightComp.world_position, 1.0);
-
+	//FragColor = gb0_color;
 	FragColor = color;
 }
 
