@@ -52,6 +52,8 @@ GTR::Renderer::Renderer()
 	random_points = generateSpherePoints(64, 1, false);
 	show_ssao = false;
 
+	pbr = true;
+
 }
 
 // --- Rendercalls manager functions ---
@@ -1097,7 +1099,6 @@ void GTR::Renderer::renderDeferred(Camera* camera)
 	quad->render(GL_TRIANGLES);
 
 	ssao_fbo->unbind();
-
 	illumination_fbo->bind();
 	glClearColor(scene->background_color.x, scene->background_color.y, scene->background_color.z, 1.0);
 	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
@@ -1109,9 +1110,18 @@ void GTR::Renderer::renderDeferred(Camera* camera)
 	// UN QUAD ES UNA MESH QUE VA DE -1, 1 A 1,1N ??
 	// GUARDAMOS ESTO EN UNA VARIABLE?
 	Mesh* sphere = Mesh::Get("data/meshes/sphere.obj", false, false);
-	shader = Shader::Get("deferred");  // si utilizamos el sphere tenemos que tener en cuenta la view projection
-											   // y la model para ubicar correctamente la esfera
-											   // coger de radio el max_distance
+	if (pbr)
+	{
+		shader = Shader::Get("deferred_pbr");
+
+	}
+	else
+	{
+		shader = Shader::Get("deferred");  // si utilizamos el sphere tenemos que tener en cuenta la view projection
+										   // y la model para ubicar correctamente la esfera
+										   // coger de radio el max_distance
+
+	}
 	shader->enable();
 	shader->setUniform("u_ambient_light", scene->ambient_light);
 	shader->setUniform("u_gb0_texture", gbuffers_fbo->color_textures[0], 0);

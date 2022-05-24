@@ -86,6 +86,9 @@ namespace GTR {
 		std::vector<Vector3> random_points;
 		bool show_ssao;
 
+		// PBR
+		bool pbr;
+
 		//bool bona_nit; // true-> todo apagado (sin luces), false-> luces visibles
 
 		Renderer();
