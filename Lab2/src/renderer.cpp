@@ -825,8 +825,8 @@ void GTR::Renderer::renderMeshWithMaterialToGBuffers(const Matrix44 model, Mesh*
 		return;
 	assert(glGetError() == GL_NO_ERROR);
 
-	if (material->alpha_mode == eAlphaMode::BLEND)
-		return;
+	//if (material->alpha_mode == eAlphaMode::BLEND)
+	//	return;
 
 	Shader* shader = NULL;
 
@@ -1057,6 +1057,12 @@ void GTR::Renderer::renderDeferred(Camera* camera)
 	for (int i = 0; i < render_calls.size(); ++i) {
 		// Instead of rendering the entities vector, render the render_calls vector
 		RenderCall rc = render_calls[i];
+
+		//if (rc.material->alpha_mode == eAlphaMode::BLEND) {
+		//	Shader* shader = Shader::Get("multi_pass");
+		//	setMultipassParameters(rc.material, shader, rc.mesh);
+		//}
+
 
 		// if rendercall has mesh and material, render it
 		if (rc.mesh && rc.material) {
