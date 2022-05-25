@@ -662,7 +662,12 @@ void Renderer::renderMeshWithMaterial(const Matrix44 model, Mesh* mesh, GTR::Mat
 	if (typeOfRender == eRenderPipeline::SINGLEPASS)
 		shader = Shader::Get("single_pass");
 	else if (typeOfRender == eRenderPipeline::MULTIPASS)
-		shader = Shader::Get("multi_pass");
+	{
+		if (pbr)
+			shader = Shader::Get("pbr_multi");
+		else
+			shader = Shader::Get("multi_pass");
+	}
 
 	assert(glGetError() == GL_NO_ERROR);
 
