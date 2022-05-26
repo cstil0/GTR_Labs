@@ -45,6 +45,11 @@ namespace GTR {
 			FORWARD,
 			DEFERRED
 		};
+		
+		enum eSSAOType {
+			SSAO,
+			SSAO_plus
+		};
 
 	public:
 
@@ -83,8 +88,10 @@ namespace GTR {
 
 		// ambient occlusion
 		FBO* ssao_fbo;
-		std::vector<Vector3> random_points;
+		std::vector<Vector3> random_points_sph;
+		std::vector<Vector3> random_points_hemi;
 		bool show_ssao;
+		eSSAOType SSAOType;
 
 		// PBR
 		bool pbr;
@@ -121,6 +128,7 @@ namespace GTR {
 		void renderNode(const Matrix44& model, GTR::Node* node, Camera* camera);
 		//to render one mesh given its material and transformation matrix
 		void renderMeshWithMaterial(const Matrix44 model, Mesh* mesh, GTR::Material* material, Camera* camera);
+		void renderTransparentMaterial(const Matrix44 model, Mesh* mesh, GTR::Material* material, Camera* camera);
 		//Texture* screenToTexture();
 		void renderMeshWithMaterialToGBuffers(const Matrix44 model, Mesh* mesh, GTR::Material* material, Camera* camera);
 		// to render flat objects for generating the shadowmaps

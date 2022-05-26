@@ -49,8 +49,10 @@ GTR::Renderer::Renderer()
 	screen_fbo = NULL;
 
 	ssao_fbo = NULL;
-	random_points = generateSpherePoints(64, 1, false);
+	random_points_sph = generateSpherePoints(64, 1, false);
+	random_points_hemi = generateSpherePoints(64, 1, true);
 	show_ssao = false;
+	SSAOType = SSAO_plus;
 
 	pbr = true;
 
@@ -715,123 +717,83 @@ void Renderer::renderMeshWithMaterial(const Matrix44 model, Mesh* mesh, GTR::Mat
 	glDepthFunc(GL_LESS);
 }
 
-//Texture* GTR::Renderer::screenToTexture() {
-//	Scene* scene = Scene::instance;
-//
-//	glClearColor(scene->background_color.x, scene->background_color.y, scene->background_color.z, 1.0);
-//
-//	// Clear the color and the depth buffer
-//	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-//	checkGLErrors();
-//
-//	int width = Application::instance->window_width;
-//	int height = Application::instance->window_height;
-//	if (!screen_fbo) {
-//		//create  FBO
-//		screen_fbo = new FBO();
-//
-//		//create 3 textures of 4 components
-//		screen_fbo->create(width, height,
-//			4, 			//three textures
-//			GL_RGBA,	//four channels
-//			GL_UNSIGNED_BYTE, //1 byte
-//			true);		//add depth_texture
-//
-//	screen_fbo->bind();
-//
-//	glClearColor(scene->background_color.x, scene->background_color.y, scene->background_color.z, 1.0);
-//	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);;
-//	
-//
-//
-//	gbuffers_fbo->unbind();
-//
-//
-//	// NO TESTEAMOS DEPTH POR QUE YA HEMOS RENDERIZADO LAS TEXTURAS CON LAS OCLUSIONES
-//	// ADEM�S LA ILLUMINATION FBO NO TIENE NADA EN DEPTH AHORA
-//	glDisable(GL_DEPTH_TEST);
-//
-//	// UN QUAD ES UNA MESH QUE VA DE -1, 1 A 1,1N ??
-//	Mesh* quad = Mesh::getQuad();
-//	// GUARDAMOS ESTO EN UNA VARIABLE?
-//	Mesh* sphere = Mesh::Get("data/meshes/sphere.obj", false, false);
-//	Shader* shader = Shader::Get("deferred");  // si utilizamos el sphere tenemos que tener en cuenta la view projection
-//											   // y la model para ubicar correctamente la esfera
-//											   // coger de radio el max_distance
-//	shader->enable();
-//	shader->setUniform("u_ambient_light", scene->ambient_light);
-//	shader->setUniform("u_gb0_texture", gbuffers_fbo->color_textures[0], 0);
-//	shader->setUniform("u_gb1_texture", gbuffers_fbo->color_textures[1], 1);
-//	shader->setUniform("u_gb3_texture", gbuffers_fbo->color_textures[3], 3);
-//	shader->setUniform("u_depth_texture", gbuffers_fbo->depth_texture, 4);
-//
-//	//pass the inverse projection of the camera to reconstruct world pos.
-//	Matrix44 inv_vp = camera->viewprojection_matrix;
-//	inv_vp.inverse();
-//	shader->setUniform("u_inverse_viewprojection", inv_vp);
-//	//pass the inverse window resolution, this may be useful
-//	shader->setUniform("u_iRes", Vector2(1.0 / (float)width, 1.0 / (float)height));
-//
-//	shader->setUniform("u_gamma", gamma);
-//
-//	Vector3 temp_ambient = scene->ambient_light;
-//
-//
-//	if (!lights.size()) {
-//		shader->setUniform("u_light_color", Vector3());
-//		quad->render(GL_TRIANGLES);
-//	}
-//	int i_shadow = 0;
-//	for (int i = 0; i < lights.size(); i++) {
-//		// emissive texture
-//		if (i == 0)
-//			shader->setUniform("u_gb2_texture", gbuffers_fbo->color_textures[2], 2);
-//		else
-//		{
-//			//gbuffers_fbo->color_textures[2] = Texture::getBlackTexture();
-//			shader->setUniform("u_gb2_texture", Texture::getBlackTexture(), 2);
-//		}
-//
-//		LightEntity* light = lights[i];
-//
-//		if (i == 0) {
-//			glDisable(GL_BLEND);
-//		}
-//		else {
-//			glBlendFunc(GL_SRC_ALPHA, GL_ONE);
-//			glEnable(GL_BLEND);
-//		}
-//
-//		//if (i == 0) {
-//		//	int n = 0;
-//		//}
-//		uploadLightToShader(light, shader, temp_ambient, i_shadow);
-//		shader->setUniform("u_light_is_last", i == lights.size() - 1 ? 1 : 0);
-//
-//		if (light->cast_shadows) {
-//			i_shadow += 1;
-//		}
-//		if (light->light_type == LightEntity::eTypeOfLight::DIRECTIONAL)
-//			quad->render(GL_TRIANGLES);
-//		else
-//			quad->render(GL_TRIANGLES);
-//		//sphere->render(GL_TRIANGLES);
-//
-//		temp_ambient = Vector3(0.0, 0.0, 0.0);  // CAMBIAR AMBIENT DESPUÉS DE LA PRIMERA ITERACIÓN
-//	}
-//
-//	illumination_fbo->unbind();
-//	glDisable(GL_BLEND);
-//	illumination_fbo->color_textures[0]->toViewport();
-//	//gbuffers_fbo->color_textures[1]->getWhiteTexture();
-//	//gbuffers_fbo->color_textures[1]->toViewport();
-//
-//
-//	if (show_buffers)
-//		showGBuffers(Application::instance->window_width, Application::instance->window_height, camera);
-//
-//	glEnable(GL_DEPTH_TEST);
-//}
+void GTR::Renderer::renderTransparentMaterial(const Matrix44 model, Mesh* mesh, GTR::Material* material, Camera* camera)
+{
+	//in case there is nothing to do
+	if (!mesh || !mesh->getNumVertices() || !material)
+		return;
+	assert(glGetError() == GL_NO_ERROR);
+
+	Shader* shader = NULL;
+
+	//select if render both sides of the triangles
+	if (material->two_sided)
+		glDisable(GL_CULL_FACE);
+	else
+		glEnable(GL_CULL_FACE);
+
+	assert(glGetError() == GL_NO_ERROR);
+
+	//chose a shader
+	if (pbr)
+		shader = Shader::Get("pbr_multi");
+	else
+		shader = Shader::Get("multi_pass");
+
+	assert(glGetError() == GL_NO_ERROR);
+
+	//no shader? then nothing to render
+	if (!shader)
+		return;
+	shader->enable();
+
+	//upload uniforms
+	shader->setUniform("u_viewprojection", camera->viewprojection_matrix);
+	shader->setUniform("u_camera_position", camera->eye);
+	shader->setUniform("u_model", model);
+	float t = getTime();
+	shader->setUniform("u_time", t);
+
+	shader->setUniform("u_color", material->color);
+	// pass textures to the shader
+	setTextures(material, shader);
+
+	//this is used to say which is the alpha threshold to what we should not paint a pixel on the screen (to cut polygons according to texture alpha)
+	shader->setUniform("u_alpha_cutoff", material->alpha_mode == GTR::eAlphaMode::MASK ? material->alpha_cutoff : 0);
+
+	Scene* scene = Scene::instance;
+
+
+	Texture* emissive_texture = NULL;
+	emissive_texture = material->emissive_texture.texture;
+
+	if (emissive_texture)
+		shader->setUniform("u_emissive_texture", emissive_texture, 1);
+	// black texture will not add additional light
+	else
+		shader->setUniform("u_emissive_texture", Texture::getBlackTexture(), 1);
+
+	// paint if value is less or equal to the one in the depth buffer
+	glDepthFunc(GL_LEQUAL);
+	glEnable(GL_BLEND);
+	glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+
+	//Scene* scene = Scene::instance;
+
+	Vector3 ambient_light = scene->ambient_light;
+	shader->setUniform("u_ambient_light", ambient_light);
+	shader->setUniform("u_light_color", Vector3(0.0, 0.0, 0.0));
+
+	mesh->render(GL_TRIANGLES);
+
+	//setMultipassParameters(material, shader, mesh);
+	shader->disable();
+
+	//set the render state as it was before to avoid problems with future renders
+	glDisable(GL_BLEND);
+	glBlendFunc(GL_SRC_ALPHA, GL_ONE);
+	glDepthFunc(GL_LESS);
+}
 
 void GTR::Renderer::renderMeshWithMaterialToGBuffers(const Matrix44 model, Mesh* mesh, GTR::Material* material, Camera* camera)
 {
@@ -840,8 +802,8 @@ void GTR::Renderer::renderMeshWithMaterialToGBuffers(const Matrix44 model, Mesh*
 		return;
 	assert(glGetError() == GL_NO_ERROR);
 
-	//if (material->alpha_mode == eAlphaMode::BLEND)
-	//	return;
+	if (material->alpha_mode == eAlphaMode::BLEND)
+		return;
 
 	Shader* shader = NULL;
 
@@ -1058,9 +1020,9 @@ void GTR::Renderer::renderDeferred(Camera* camera)
 
 		ssao_fbo->create(width, height, // MIRAR SI CON MENOS TAMAÑO NO PERDEMOS MUCHO
 			1, 			//three textures
-			GL_LUMINANCE, 		// one channel, PUEDE DAR PROBLEMAS, SI DA PROBLEMAS COGER RGB
+			GL_RGB, 		// one channel, PUEDE DAR PROBLEMAS, SI DA PROBLEMAS COGER RGB
 			GL_UNSIGNED_BYTE, //1 byte
-			false);  
+			false);
 	}
 
 	gbuffers_fbo->bind();
@@ -1098,8 +1060,18 @@ void GTR::Renderer::renderDeferred(Camera* camera)
 	glDisable(GL_DEPTH_TEST);
 	glDisable(GL_BLEND);
 
-	Shader* shader = Shader::Get("ssao"); 
-	shader->enable();
+	Shader* shader = NULL;
+	if (SSAOType == SSAO){
+		shader = Shader::Get("ssao");
+		shader->enable();
+		shader->setUniform3Array("u_points", (float*)&random_points_sph[0], random_points_sph.size());
+	}
+	else {
+		shader = Shader::Get("ssao_plus");
+		shader->enable();
+		shader->setUniform3Array("u_points", (float*)&random_points_hemi[0], random_points_hemi.size());
+
+	}
 	shader->setUniform("u_gb1_texture", gbuffers_fbo->color_textures[1], 0);
 	shader->setUniform("u_gb3_texture", gbuffers_fbo->color_textures[3], 1);
 	shader->setUniform("u_depth_texture", gbuffers_fbo->depth_texture, 2);
@@ -1107,13 +1079,11 @@ void GTR::Renderer::renderDeferred(Camera* camera)
 	shader->setUniform("u_inverse_viewprojection", inv_vp);
 	shader->setUniform("u_iRes", Vector2(1.0 / (float)width, 1.0 / (float)height));
 
-	shader->setUniform3Array("u_points", (float*)&random_points[0],random_points.size());
 
 	quad->render(GL_TRIANGLES);
 
 	ssao_fbo->unbind();
 	illumination_fbo->bind();
-	illumination_fbo->depth_texture = gbuffers_fbo->depth_texture;
 	glClearColor(scene->background_color.x, scene->background_color.y, scene->background_color.z, 1.0);
 	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
@@ -1227,6 +1197,9 @@ void GTR::Renderer::renderDeferred(Camera* camera)
 	}
 
 	// AHORA PINTAMOS TODOS LOS OBJETOS CON TRANSPARENCIA
+	glEnable(GL_DEPTH_TEST);
+	illumination_fbo->depth_texture = gbuffers_fbo->depth_texture;
+
 	for (int i = 0; i < render_calls.size(); ++i) {
 		RenderCall rc = render_calls[i];
 
@@ -1234,9 +1207,10 @@ void GTR::Renderer::renderDeferred(Camera* camera)
 			if (rc.material->alpha_mode == eAlphaMode::BLEND)
 			// test if node inside the frustum of the camera
 				if (camera->testBoxInFrustum(rc.world_bounding.center, rc.world_bounding.halfsize))
-					renderMeshWithMaterial(rc.model, rc.mesh, rc.material, camera);
+					renderTransparentMaterial(rc.model, rc.mesh, rc.material, camera);
 		}
 	}
+	glDisable(GL_DEPTH_TEST);
 
 	illumination_fbo->unbind();
 	//gbuffers_fbo->depth_texture->toViewport();

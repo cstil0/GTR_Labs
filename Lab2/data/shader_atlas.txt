@@ -10,6 +10,7 @@ pbr_multi basic.vs pbr_multi.fs
 deferred_pbr basic.vs deferred_pbr.fs
 col_corr quad.vs col_corr.fs
 ssao quad.vs ssao.fs
+ssao_plus quad.vs ssao_plus.fs
 depth quad.vs depth.fs
 multi basic.vs multi.fs
 
@@ -1659,6 +1660,117 @@ void main()
 
 }
 
+//------------------------------------------------------------
+\ssao_plus.fs
+#version 330 core
+
+in vec2 v_uv;
+
+uniform sampler2D u_gb1_texture;
+uniform sampler2D u_gb3_texture;
+uniform sampler2D u_depth_texture;
+
+uniform mat4 u_viewprojection;
+uniform mat4 u_inverse_viewprojection;
+uniform vec2 u_iRes;
+uniform vec3 u_points[64];
+
+vec3 rotateY( float angle, vec3 delta )
+{
+	float s0 = sin(angle);
+	float c0 = cos(angle);
+	return vec3( delta.x * c0 - delta.z * s0, delta.y, delta.x * s0 + delta.z * c0  );
+}
+
+mat3 cotangent_frame(vec3 N, vec3 p, vec2 uv)
+{
+	// get edge vectors of the pixel triangle
+	vec3 dp1 = dFdx( p );
+	vec3 dp2 = dFdy( p );
+	vec2 duv1 = dFdx( uv );
+	vec2 duv2 = dFdy( uv );
+	// solve the linear system
+	vec3 dp2perp = cross( dp2, N );
+	vec3 dp1perp = cross( N, dp1 );
+	vec3 T = dp2perp * duv1.x + dp1perp * duv2.x;
+	vec3 B = dp2perp * duv1.y + dp1perp * duv2.y;
+	// construct a scale-invariant frame 
+	float invmax = inversesqrt( max( dot(T,T), dot(B,B) ) );
+	return mat3( T * invmax, B * invmax, N );
+}
+
+
+out vec4 FragColor;
+void main()
+{
+	vec2 uv = gl_FragCoord.xy * u_iRes.xy;
+
+	float depth = texture( u_depth_texture, uv ).x;
+	vec3 gb1_color = texture(u_gb1_texture, uv).xyz; //desconvertir rango
+	vec3 normal = normalize(gb1_color * 2.0 - vec3(1.0));
+	//float ambient_factor = texture( u_gb3_texture, uv ).x;
+
+	//ignore pixels in the background
+	if(depth >= 1.0)
+	{
+		FragColor = vec4(1.0);
+		return;
+	}
+
+	vec4 original_point = gl_FragCoord;
+
+	vec4 screen_pos = vec4(uv.x*2.0-1.0, uv.y*2.0-1.0, depth*2.0-1.0, 1.0 );
+	vec4 proj_worldpos = u_inverse_viewprojection * screen_pos;
+	vec3 world_position = proj_worldpos.xyz / proj_worldpos.w;
+
+	const int samples = 64;
+	float num = samples; //num inicial de muestras que no estan ocluidas
+
+	//to create the matrix33 to convert from tangent to world
+	mat3 rotmat = cotangent_frame( normal, world_position, uv );
+
+
+	//for every sample around the point
+	for( int i = 0; i < samples; ++i )
+	{
+		//compute is world position using the random
+		vec3 delta = u_points[i] * 10.0;
+		//float angle = gl_FragCoord.x * 1013.89 + gl_FragCoord.y * 1031.41;
+		//delta = rotateY( angle, delta );
+		vec3 p = world_position + delta;
+		//rotate a point is easy
+		vec3 rotated_point = rotmat * p;
+
+		//find the uv in the depth buffer of this point
+		vec4 proj = u_viewprojection * vec4(rotated_point,1.0);  // multiplicar por la view para estar en screen space
+		proj.xy /= proj.w; //convert to clipspace from homogeneous
+
+		//apply a tiny bias to its z before converting to clip-space
+		proj.z = (proj.z - 0.005) / proj.w;  // sin este bias un pixel se puede ocluir a si mismo
+		proj.xyz = proj.xyz * 0.5 + vec3(0.5); //to [0..1]
+
+		//read p true depth
+		float pdepth = texture( u_depth_texture, proj.xy ).x;
+
+		//compare true depth with its depth
+		float diff = proj.z - pdepth;
+		if( diff > 0.0 && diff < 0.001 ) //if true depth smaller, is inside
+		{
+			float x_mod = pow((u_points[i].x), 2);
+			float y_mod = pow((u_points[i].y), 2);
+			float z_mod = pow((u_points[i].z), 2);
+			float dist = sqrt(x_mod + y_mod + z_mod);
+
+			num = num - dist; //remove this point from the list of visible
+		}
+	}
+
+	//finally, compute the AO factor as the ratio of visible points
+	float ao = float(num) / float(samples);
+
+	FragColor = vec4(ao); // * ambient_factor;
+	//FragColor = vec4(normal	,1.0);
+}
 
 //------------------------------------------------------------
 \multi.fs
