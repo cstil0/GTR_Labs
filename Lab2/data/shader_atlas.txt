@@ -262,15 +262,20 @@ void computeAttenuation(inout LightStruct lc, int i){
 }
 
 vec4 assignMapPiece(int index){
-	// !!!!!!!!!!!!HARCODEADO
-	if (index == 0)
-		return vec4(0.5, 0.5, 0, 0);
-	else if (index == 1)
-		return vec4(0.5, 0.5, 0, 0.5);
-	else if (index == 2)
-		return vec4(0.5, 0.5, 0.5, 0);
+	int num_cols = int(ceil(sqrt(u_num_lights_shadow)));
+	int num_rows;
+	if (u_num_lights_shadow <= num_cols * (num_cols - 1)) // last row remains empty
+		num_rows = num_cols - 1;                 // eliminate it
 	else
-		return vec4(0.5, 0.5, 0.5, 0.5);
+		num_rows = num_cols;
+
+	float min_cols_rows = (num_cols < num_rows) ? num_cols : num_rows;
+	float size = 1 / min_cols_rows;
+
+	int i_col = index % num_cols;
+	int i_row = int(floor(index / num_cols));
+
+	return vec4(size, size, i_col * size, i_row * size);
 }
 
 void testShadowMap(inout LightStruct lc, int i, int sh_i){
@@ -452,6 +457,7 @@ uniform vec3 u_lights_direction[MAX_LIGHTS];
 uniform float u_lights_cone_cos[MAX_LIGHTS];
 uniform float u_lights_cone_exp[MAX_LIGHTS];
 
+uniform int u_num_lights_shadow;
 uniform int u_lights_cast_shadows[MAX_LIGHTS];
 uniform sampler2D u_lights_shadowmap;
 uniform mat4 u_lights_shadowmap_vpm[MAX_LIGHTS];
@@ -1276,9 +1282,9 @@ void main()
 	LightComp.V = normalize(u_camera_position - LightComp.world_position);
 	LightComp.H = normalize(vec3((LightComp.V + LightComp.L) / 2));
 
-	LightComp.NdotH = clamp(dot(LightComp.N, LightComp.H), 0.0, 1.0);
-	LightComp.NdotV = clamp(dot(LightComp.N, LightComp.V), 0.0, 1.0);
-	LightComp.LdotH = clamp(dot(LightComp.L, LightComp.H), 0.0, 1.0);
+	LightComp.NdotH = max(dot(LightComp.N, LightComp.H), 0.0);
+	LightComp.NdotV = max(dot(LightComp.N, LightComp.V), 0.0);
+	LightComp.LdotH = max(dot(LightComp.L, LightComp.H), 0.0);
 
 	//compute the specular
 	vec3 Fr_d = specularBRDF( roughness, f0, LightComp.NdotH, LightComp.NdotV, LightComp.NdotL, LightComp.LdotH);
@@ -1315,8 +1321,15 @@ void main()
 
 	//color.xyz = gamma(color.xyz);
 
-	FragColor = color;
-	//FragColor = vec4(LightComp.LdotH);
+	//FragColor = color;
+	// NdotV CREO QUE HACE COSAS UN PELIN RARAS
+	//FragColor = vec4(Fd_d, 1.0);
+
+	float f90 = 0.5 + 2.0 * linearRoughness * LightComp.LdotH * LightComp.LdotH;
+	float lightScatter = F_Schlick(LightComp.NdotL, f90);
+	//float viewScatter  = F_Schlick(LightComp.NdotV, f90);
+
+	FragColor = vec4(lightScatter);
 }
 
 //------------------------------------------------------------

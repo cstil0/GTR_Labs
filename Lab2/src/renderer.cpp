@@ -126,6 +126,8 @@ void GTR::Renderer::sortRenderCalls() {
 
 Vector4 GTR::Renderer::assignMapPiece(int width, int height, int index, int num_elements) {
 	//int nElements = 6;
+	if (index == 2)
+		int temp = 1;
 	int num_cols = (int)ceil(sqrt(num_elements));
 	int num_rows;
 	if (num_elements <= num_cols * (num_cols - 1)) // last row remains empty
@@ -136,25 +138,29 @@ Vector4 GTR::Renderer::assignMapPiece(int width, int height, int index, int num_
 	float min_cols_rows = (num_cols < num_rows) ? num_cols : num_rows;
 	float size = 1/ min_cols_rows;
 
-	int i_row = floor(index / num_cols);
-	int i_col = floor(index-(i_row*num_cols) % num_rows);
+	int i_col = index % num_cols;
+	int i_row = floor(index/num_cols);
+	//int i_row = floor(index / num_cols);
+	//int i_col = floor(index-(i_row*num_cols) % num_rows);
 
-	//return Vector4(2048*i_col*size, 2048*i_row*size, 2048*size, 2048*size);
-	if (index == 0)
-		//return Vector4(0, 0, 0.5, 0.5);
-		return Vector4(0, 0, width * 0.5, height * 0.5);
-	else if (index == 1)
-		//return Vector4(0, 0.5, 0.5, 0.5);
-		return Vector4(0, height * 0.5, width * 0.5, width * 0.5);
-	else if (index == 2)
-		//return Vector4(0.5, 0, 0.5, 0.5);
-		return Vector4(width * 0.5, 0, width * 0.5, height * 0.5);
-	else
-		//return Vector4(0.5, 0.5, 0.5, 0.5);
-		return Vector4(width * 0.5, height * 0.5, width * 0.5, height * 0.5);
+	return Vector4(width*i_col*size, height*i_row*size, width*size, height*size);
+	//if (index == 0)
+	//	//return Vector4(0, 0, 0.5, 0.5);
+	//	return Vector4(0, 0, width * 0.5, height * 0.5);
+	//else if (index == 1)
+	//	//return Vector4(0, 0.5, 0.5, 0.5);
+	//	return Vector4(0, height * 0.5, width * 0.5, width * 0.5);
+	//else if (index == 2)
+	//	//return Vector4(0.5, 0, 0.5, 0.5);
+	//	return Vector4(width * 0.5, 0, width * 0.5, height * 0.5);
+	//else
+	//	//return Vector4(0.5, 0.5, 0.5, 0.5);
+	//	return Vector4(width * 0.5, height * 0.5, width * 0.5, height * 0.5);
 }
 
 // two functions since viewport and shader reads shadowmaps in different ways
+// CREO QUE WIDTH Y HEIGHT NO SON NECESARIOS
+// SE PODRÍA JUNTAR CON LA DE ARRIBA
 Vector4 GTR::Renderer::assignMapPiece_shader(int width, int height, int index, int num_elements) {
 	//int nElements = 6;
 	int num_cols = (int)ceil(sqrt(num_elements));
@@ -167,18 +173,20 @@ Vector4 GTR::Renderer::assignMapPiece_shader(int width, int height, int index, i
 	float min_cols_rows = (num_cols < num_rows) ? num_cols : num_rows;
 	float size = 1 / min_cols_rows;
 
+	int i_col = index % num_cols;
 	int i_row = floor(index / num_cols);
-	int i_col = floor(index - (i_row * num_cols) % num_rows);
+
+	return Vector4(size, size, i_col * size, i_row * size);
 
 	//return Vector4(2048*i_col*size, 2048*i_row*size, 2048*size, 2048*size);
-	if (index == 0)
-		return Vector4(0.5, 0.5, 0, 0);
-	else if (index == 1)
-		return Vector4(0.5, 0.5, 0, 0.5);
-	else if (index == 2)
-		return Vector4(0.5, 0.5, 0.5, 0);
-	else
-		return Vector4(0.5, 0.5, 0.5, 0.5);
+	//if (index == 0)
+	//	return Vector4(0.5, 0.5, 0, 0);
+	//else if (index == 1)
+	//	return Vector4(0.5, 0.5, 0, 0.5);
+	//else if (index == 2)
+	//	return Vector4(0.5, 0.5, 0.5, 0);
+	//else
+	//	return Vector4(0.5, 0.5, 0.5, 0.5);
 }
 
 // generate the shadowmap given a light
@@ -1100,6 +1108,7 @@ void GTR::Renderer::renderDeferred(Camera* camera)
 
 	ssao_fbo->unbind();
 	illumination_fbo->bind();
+	illumination_fbo->depth_texture = gbuffers_fbo->depth_texture;
 	glClearColor(scene->background_color.x, scene->background_color.y, scene->background_color.z, 1.0);
 	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
@@ -1210,6 +1219,18 @@ void GTR::Renderer::renderDeferred(Camera* camera)
 
 		temp_ambient = Vector3(0.0, 0.0, 0.0);  // CAMBIAR AMBIENT DESPUÉS DE LA PRIMERA ITERACIÓN
 		glFrontFace(GL_CCW);
+	}
+
+	// AHORA PINTAMOS TODOS LOS OBJETOS CON TRANSPARENCIA
+	for (int i = 0; i < render_calls.size(); ++i) {
+		RenderCall rc = render_calls[i];
+
+		if (rc.mesh && rc.material) {
+			if (rc.material->alpha_mode == eAlphaMode::BLEND)
+			// test if node inside the frustum of the camera
+				if (camera->testBoxInFrustum(rc.world_bounding.center, rc.world_bounding.halfsize))
+					renderMeshWithMaterial(rc.model, rc.mesh, rc.material, camera);
+		}
 	}
 
 	illumination_fbo->unbind();
@@ -1440,6 +1461,7 @@ void Renderer::setSinglepass_parameters(GTR::Material* material, Shader* shader,
 	//if(lights_direction.size())
 	shader->setUniform("u_lights_direction", lights_direction);
 
+	shader->setUniform("u_num_lights_shadow", num_lights_shadows);
 	shader->setUniform("u_lights_cast_shadows", lights_cast_shadows);
 	shader->setUniform("u_lights_shadowmap", shadowmap, 8);
 	if (lights_shadowmap_vpm.size())
