@@ -1262,7 +1262,8 @@ void main()
 	if (u_gamma == 1)
 		color.xyz = degamma(color.xyz);
 
-	vec3 light = vec3(u_ambient_light);
+	vec3 light = vec3(0.0);
+	//vec3 light = vec3(u_ambient_light);
 
 	// Point
 	if (u_light_type == 1){
@@ -1315,9 +1316,8 @@ void main()
 
 	//compute how much light received the pixel
 	//vec3 lightParams = u_light_color * u_light_intensity * att * shadow_factor;
-
 	//modulate direct light by light received
-	light += direct * lightParams;
+	light += lightParams * direct;
 
 	//light += lightParams;
 
@@ -1331,7 +1331,8 @@ void main()
 	color.xyz *= light;
 
 	//FragColor = color;
-	FragColor = vec4(direct, 1.0);
+	FragColor = vec4(light, 1.0);
+	//FragColor = vec4((u_ambient_light + lightParams)*direct, 1.0);
 }
 
 //------------------------------------------------------------
@@ -1500,8 +1501,8 @@ void main()
 	if (u_gamma == 1)
 		color.xyz = degamma(color.xyz);
 
-	vec3 light = vec3(u_ambient_light);
-
+	//vec3 light = vec3(u_ambient_light);
+	vec3 light = vec3(0.0);
 	// Point
 	if (u_light_type == 1){
 		computeL_point(LightComp);
@@ -1569,7 +1570,8 @@ void main()
 
 	//color.xyz = gamma(color.xyz);
 
-	FragColor = color;
+	//FragColor = color;
+	FragColor = vec4(light, 1.0);
 	//FragColor = vec4(LightComp.NdotH);
 }
 
