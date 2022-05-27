@@ -1330,8 +1330,8 @@ void main()
 	light *= met_rough.x;
 	color.xyz *= light;
 
-	FragColor = color;
-	//FragColor = vec4(LightComp.L, 1.0);
+	//FragColor = color;
+	FragColor = vec4(direct, 1.0);
 }
 
 //------------------------------------------------------------

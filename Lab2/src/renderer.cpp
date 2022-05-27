@@ -1083,9 +1083,11 @@ void GTR::Renderer::renderDeferred(Camera* camera)
 	quad->render(GL_TRIANGLES);
 
 	ssao_fbo->unbind();
+
 	illumination_fbo->bind();
 	glClearColor(scene->background_color.x, scene->background_color.y, scene->background_color.z, 1.0);
-	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+	//glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+	//gbuffers_fbo->depth_texture->copyTo(illumination_fbo->depth_texture);
 
 	// NO TESTEAMOS DEPTH POR QUE YA HEMOS RENDERIZADO LAS TEXTURAS CON LAS OCLUSIONES
 	// ADEM�S LA ILLUMINATION FBO NO TIENE NADA EN DEPTH AHORA
@@ -1196,9 +1198,12 @@ void GTR::Renderer::renderDeferred(Camera* camera)
 		glFrontFace(GL_CCW);
 	}
 
+	//now we copy the gbuffers depth buffer to the binded 
+	gbuffers_fbo->depth_texture->copyTo(NULL);
+
 	// AHORA PINTAMOS TODOS LOS OBJETOS CON TRANSPARENCIA
 	glEnable(GL_DEPTH_TEST);
-	illumination_fbo->depth_texture = gbuffers_fbo->depth_texture;
+	//illumination_fbo->depth_texture = gbuffers_fbo->depth_texture;
 
 	for (int i = 0; i < render_calls.size(); ++i) {
 		RenderCall rc = render_calls[i];
