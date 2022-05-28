@@ -49,10 +49,15 @@ vec3 degamma(vec3 c)
 	return pow(c,vec3(2.2));
 }
 
+vec4 degamma4(vec4 c)
+{
+	return pow(c,vec4(2.2));
+}
+
 // from linear values to gamma (perception) values
 vec3 gamma(vec3 c)
 {
-	return pow(c,vec3(1.0/2.2));
+	return pow( c, vec3(1.0/2.2));
 }
 
 \light_functions_multi
@@ -275,7 +280,7 @@ vec4 assignMapPiece(int index){
 	float size = 1 / min_cols_rows;
 
 	int i_col = index % num_cols;
-	int i_row = int(floor(index / num_cols));
+	int i_row = index / num_cols;
 
 	return vec4(size, size, i_col * size, i_row * size);
 }
@@ -477,13 +482,13 @@ void main()
 	vec4 color = u_color;
 	color *= texture( u_texture, v_uv );
 
-
 	if(color.a < u_alpha_cutoff)
 		discard;
 
 	vec3 light = vec3(u_ambient_light);
 	if (u_gamma == 1)
 		color.xyz = degamma(color.xyz);
+		light = degamma(light);
 
 	// index to store the number of lights casting shadows
 	int l_shadow_i = 0;
@@ -503,6 +508,11 @@ void main()
 			1.0 // shadow_factor
 		);
 
+		vec3 linear_light_color = u_lights_color[i];
+
+		if (u_gamma == 1)
+			linear_light_color = degamma(u_lights_color[i]);
+			
 		// Point
 		if (u_lights_type[i] == 1){
 			computeL_point(LightComp, i);
@@ -528,18 +538,29 @@ void main()
 
 		computeNdotL(LightComp);
 		computeAttenuation(LightComp, i);
-		light += u_lights_color[i] * LightComp.NdotL * LightComp.att_factor * LightComp.spot_factor  * LightComp.shadow_factor;
+		light += linear_light_color * LightComp.NdotL * LightComp.att_factor * LightComp.spot_factor  * LightComp.shadow_factor;
 	}
 
 	// Apply other textures
 	// Emissive
-	light += texture( u_emissive_texture, v_uv ).xyz;
+	vec3 emissive = texture( u_emissive_texture, v_uv ).xyz;
+
+	if (u_gamma == 1)
+	{
+		light += degamma(emissive);
+		//light *= degamma (occlusion);
+	}
+	else
+	{
+		light += emissive;
+	}
+
+	// Occlusion can be either in the met_rou or occlusion texture
+	light *= texture( u_occlusion_texture, v_uv ).x;
 	
 	// Occlusion
 	// x coord has occlusion map
 	light *= texture( u_met_rough_texture, v_uv ).x;
-	// Occlusion can be either in the met_rou or occlusion texture
-	light *= texture( u_occlusion_texture, v_uv ).x;
 
 	color.xyz *= light;
 
@@ -658,16 +679,22 @@ void main()
 
 	vec2 uv = v_uv;
 	vec4 color = u_color;
-	color *= texture( u_texture, v_uv );
+	vec4 texture_color = texture( u_texture, v_uv );
+
+	vec3 linear_light_color = u_light_color;
+	vec3 light = vec3(u_ambient_light);
 
 	if (u_gamma == 1){
-		color.xyz = degamma(color.xyz);
+		color = degamma4(u_color);
+		texture_color = degamma4(texture_color);
+		light = degamma(vec3(u_ambient_light));
+		linear_light_color = degamma(u_light_color);
 	}
+
+	color *= texture_color;
 
 	if(color.a < u_alpha_cutoff)
 		discard;
-
-	vec3 light = vec3(u_ambient_light);
 
 	// Point
 	if (u_light_type == 1){
@@ -695,12 +722,12 @@ void main()
 	}
 
 	computeAttenuation(LightComp);
-	light += u_light_color * LightComp.NdotL * LightComp.att_factor * LightComp.spot_factor * LightComp.shadow_factor;
+	light += linear_light_color * LightComp.NdotL * LightComp.att_factor * LightComp.spot_factor * LightComp.shadow_factor;
 	//}
 
 	// Apply other textures
 	// Emissive
-	light += texture( u_emissive_texture, v_uv ).xyz;
+	//light += texture( u_emissive_texture, v_uv ).xyz;
 
 	// Occlusion
 	// x coord has occlusion map
@@ -710,11 +737,11 @@ void main()
 
 	color.xyz *= light;
 
-	//if (u_gamma == 1){
-	//	if (u_light_is_last == 1){
-		//color.xyz = gamma(color.xyz);
+	if (u_gamma == 1){
+		//if (u_light_is_last == 1){
+		//color.xyz = gamma(color.xyz);    // ESTO NO ESTA BIEN PORQUE NO VUELVO A CONVERTIR A ESPACIO GAMMA
 		//}
-	//}
+	}
 
 	// Debug textures
 	// Normal
