@@ -1511,7 +1511,7 @@ void main()
 	vec4 gb0_color = texture(u_gb0_texture, uv);
 	vec4 gb1_color = texture(u_gb1_texture, uv);
 	vec4 gb2_color = texture(u_gb2_texture, uv);  
-	vec4 gb3_color = texture(u_gb3_texture, uv);// occ-met-rough
+	vec4 gb3_color = texture(u_gb3_texture, uv); // occ-met-rough
 
 	float depth = texture( u_depth_texture, uv ).x;
 	vec4 screen_pos = vec4(uv.x*2.0-1.0, uv.y*2.0-1.0, depth*2.0-1.0, 1.0);
@@ -1525,11 +1525,14 @@ void main()
 	float metalness = gb3_color.y;
 	float roughness = gb3_color.z;
 
-	if (u_gamma == 1)
-		color.xyz = degamma(color.xyz);
+	vec3 light = vec3(u_ambient_light);
+	vec3 light_color = u_light_color;
 
-	//vec3 light = vec3(u_ambient_light);
-	vec3 light = vec3(0.0);
+	if (u_gamma == 1)
+		//color.xyz = degamma(color.xyz);
+		light = degamma(light);
+		light_color = degamma(u_light_color);
+
 	// Point
 	if (u_light_type == 1){
 		computeL_point(LightComp);
@@ -1577,7 +1580,7 @@ void main()
 	}
 
 	computeAttenuation(LightComp);
-	vec3 lightParams = u_light_color * LightComp.att_factor * LightComp.spot_factor * LightComp.shadow_factor;
+	vec3 lightParams = light_color * LightComp.att_factor * LightComp.spot_factor * LightComp.shadow_factor;
 
 	//compute how much light received the pixel
 	//vec3 lightParams = u_light_color * u_light_intensity * att * shadow_factor;
@@ -1597,8 +1600,8 @@ void main()
 
 	//color.xyz = gamma(color.xyz);
 
-	//FragColor = color;
-	FragColor = vec4(light, 1.0);
+	FragColor = color;
+	//FragColor = vec4(light, 1.0);
 	//FragColor = vec4(LightComp.NdotH);
 }
 
@@ -1768,7 +1771,7 @@ void main()
 		//delta = rotateY( angle, delta );
 		vec3 p = world_position + delta;
 		//rotate a point is easy
-		vec3 rotated_point = rotmat * p;
+		vec3 rotated_point = world_position + rotmat * delta;
 
 		//find the uv in the depth buffer of this point
 		vec4 proj = u_viewprojection * vec4(rotated_point,1.0);  // multiplicar por la view para estar en screen space
