@@ -934,7 +934,7 @@ void main()
 	GB1 = vec4(N * 0.5 + vec3(0.5), roughness_factor);
 	GB2 = vec4(emissive, occlusion_factor);
 	// CREAR GBUFFERS SEPARADOS..??
-	GB3 = vec4(occlusion_factor, metal_factor, roughness_factor, 1.0);
+	GB3 = vec4(color.w);
 }
 
 //------------------------------- Deferred Ambient ---------------------------
@@ -1141,6 +1141,7 @@ in vec4 v_color;
 
 uniform int u_gamma;
 uniform int u_tonemapping;
+//uniform sampler2D u_gb0_texture;
 uniform sampler2D u_screen_texture;
 uniform sampler2D u_depth_texture;
 uniform float u_lumwhite2;
@@ -1156,7 +1157,8 @@ vec3 gamma(vec3 c)
 }
 
 void main(){
-	vec4 color = texture2D(u_screen_texture, v_uv);
+	float alpha = texture(u_gb0_texture, v_uv).w;
+	vec4 color = texture(u_screen_texture, v_uv);
 	vec3 rgb = color.xyz;
 	float depth = texture(u_depth_texture, v_uv).x;
 	// discard background pixels to avoid artifacts

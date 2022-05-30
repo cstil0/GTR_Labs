@@ -966,11 +966,11 @@ void GTR::Renderer::renderForward(Camera* camera)
 		col_corr->enable();
 		col_corr->setUniform("u_gamma", gamma);
 		col_corr->setUniform("u_tonemapping", tonemapping);
-		col_corr->setUniform("u_screen_texture", screen_texture, 0);
+		col_corr->setUniform("u_screen_texture", screen_texture, 1);
 		col_corr->setUniform("u_lumwhite2", lumwhite2);
 		col_corr->setUniform("u_average_lum", averagelum);
 		col_corr->setUniform("u_scale", scale);
-		col_corr->setUniform("u_depth_texture", screen_fbo->depth_texture, 1);
+		col_corr->setUniform("u_depth_texture", screen_fbo->depth_texture, 2);
 
 		Mesh* quad = Mesh::getQuad();
 		quad->render(GL_TRIANGLES);
@@ -1149,6 +1149,11 @@ void GTR::Renderer::renderDeferred(Camera* camera)
 	}
 	shader->enable();
 	int i_shadow = 0;
+
+	//glEnable(GL_DEPTH_TEST);
+	//glDepthFunc(GL_GREATER);
+	////block writing to the ZBuffer so we do not modify it with our geometry
+	//glDepthMask(false);
 
 	for (int i = 0; i < lights.size(); i++) {
 		// emissive texture
