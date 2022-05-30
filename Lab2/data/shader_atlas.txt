@@ -724,7 +724,7 @@ in vec3 v_world_position;
 in vec2 v_uv;
 in vec4 v_color;
 
-uniform int is_first;
+uniform int u_light_is_first;
 
 uniform vec3 u_camera_position;
 uniform vec4 u_color;
@@ -861,8 +861,9 @@ void main()
 	if(u_texture2show == 3)
 		color.xyz = texture(u_emissive_texture, v_uv).xyz;
 	
-	//if (is_first == 0)
-		//color.a = 0.0;
+	// seteamos el alpha a 0 a partir de la segunda iteración para que no se aplique gamma correction
+	if (u_light_is_first == 0)
+		color.a = 0.0;
 		
 	//FinalColor = vec4(color.w);
 	FinalColor = color;
@@ -1132,10 +1133,7 @@ void main()
 
 	color.xyz *= light;
 
-	//FragColor = vec4(depth, depth, depth, 1.0);
-	//FragColor = vec4(u_light_direction, 1.0);
-	//FragColor = vec4(, 1.0);
-	//FragColor = vec4(degamma(texture(u_gb0_texture, uv).xyz),1.0);
+	//FragColor = gb2_color;
 	FragColor = color;
 }
 
@@ -1167,7 +1165,7 @@ void main(){
 	vec3 rgb = color.xyz;
 	float depth = texture(u_depth_texture, v_uv).x;
 	// discard background pixels to avoid artifacts
-	if (depth == 1.0 || color.w < 1.0){
+	if (depth == 1.0){
 		discard;
 	}
 
@@ -1178,8 +1176,13 @@ void main(){
 		rgb = (rgb / lum) * Ld;
 		rgb = max(rgb,vec3(0.001));
 	}
-	if (u_gamma == 1)
+
+	// Aplicamos gamma solo a los objetos sin transparencia (sobretodo para los vidrios) dejando un pequeño
+	// margen de 0.1 ya que el chasis del coche por ejemplo tiene un poco de transparencia pero queremos aplicarle gamma
+	if (u_gamma == 1 && color.w >= 0.9)
 		rgb = gamma(rgb);
+
+
 	//rgb = pow( rgb, vec3( u_igamma ) );
 	
 	FragColor = vec4( rgb, color.a );
@@ -1202,6 +1205,8 @@ in vec3 v_world_position;
 //in vec3 v_normal;
 in vec2 v_uv;
 in vec4 v_color;
+
+uniform int u_light_is_first;
 
 uniform vec3 u_camera_position;
 uniform vec4 u_color;
@@ -1275,12 +1280,12 @@ void main()
 
 	vec3 light_color = u_light_color;
 
-	if (u_gamma == 1)
+	if (u_gamma == 1){
 		color.xyz = degamma(color.xyz);
 		color_texture.xyz = degamma(color_texture.xyz);
 		ambient_light = degamma(ambient_light);
 		light_color = degamma(light_color);
-
+	}
 
 	color *= color_texture;
 	// Point
@@ -1349,8 +1354,26 @@ void main()
 	light *= met_rough.x;
 	//color.xyz *= light;
 
-	FragColor = vec4(light,1.0);
-	//FragColor = vec4(light, 1.0);
+	// Debug textures
+	// Normal
+	if (u_texture2show == 1){
+		light = LightComp.N;
+	}
+
+	// Occlusion
+	if(u_texture2show == 2){
+		light = vec3(texture( u_met_rough_texture, v_uv ).x);
+		light *= texture(u_occlusion_texture, v_uv).x;
+	}
+	// Emissive
+	if(u_texture2show == 3)
+		light = texture(u_emissive_texture, v_uv).xyz;
+
+	if (u_light_is_first == 0)
+		color.a = 0.0;
+
+	FragColor = vec4(light,color.a);
+	//FragColor = texture(u_emissive_texture, v_uv);
 	//FragColor = vec4((u_ambient_light + lightParams)*direct, 1.0);
 }
 
@@ -1416,7 +1439,7 @@ void main()
 	vec4 gb0_color = texture(u_gb0_texture, uv);
 	vec4 gb1_color = texture(u_gb1_texture, uv);
 	vec4 gb2_color = texture(u_gb2_texture, uv);  
-	vec4 gb3_color = texture(u_gb3_texture, uv); // occ-met-rough
+	//vec4 gb3_color = texture(u_gb3_texture, uv); // occ-met-rough
 	float ao_factor = texture(u_ssao_texture, uv).x;
 
 	float depth = texture( u_depth_texture, uv ).x;
@@ -1435,10 +1458,11 @@ void main()
 	vec3 light_color = u_light_color;
 	vec3 light = vec3(0.0);
 
-	if (u_gamma == 1)
+	if (u_gamma == 1){
 		color.xyz = degamma(color.xyz);
 		ambient_light = degamma(ambient_light);
 		light_color = degamma(light_color);
+	}
 
 	// Point
 	if (u_light_type == 1){
@@ -1509,7 +1533,7 @@ void main()
 
 	//color.xyz = gamma(color.xyz);
 
-	FragColor = vec4(light, 1.0);
+	FragColor = vec4(light, color.a);
 	//FragColor = vec4(roughness);
 	//FragColor = vec4(LightComp.NdotH);
 }
