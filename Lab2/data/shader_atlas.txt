@@ -1354,7 +1354,8 @@ void main()
 	//compute how much light received the pixel
 	//vec3 lightParams = u_light_color * u_light_intensity * att * shadow_factor;
 	//modulate direct light by light received
-	light += lightParams * direct + ambient_light;
+	light += lightParams * direct;
+	light += color_texture.xyz * ambient_light;
 
 	//light += lightParams;
 
@@ -1535,12 +1536,13 @@ void main()
 	float metalness = gb3_color.y;
 	float roughness = gb3_color.z;
 
-	vec3 light = u_ambient_light;
+	vec3 ambient_light = u_ambient_light;
 	vec3 light_color = u_light_color;
+	vec3 light = vec3(0.0);
 
 	if (u_gamma == 1)
-		//color.xyz = degamma(color.xyz);
-		light = degamma(light);
+		color.xyz = degamma(color.xyz);
+		ambient_light = degamma(ambient_light);
 		light_color = degamma(light_color);
 
 	// Point
@@ -1597,7 +1599,7 @@ void main()
 
 	//modulate direct light by light received
 	light += direct * lightParams;
-
+	light += color.xyz * ambient_light * ao_factor; 
 	// Apply other textures
 	// Emissive
 	light += gb2_color.xyz;
@@ -1606,11 +1608,11 @@ void main()
 	// Occlusion value is only in one coordinate
 	light *= gb3_color.x;
 
-	color.xyz *= light;
+	//color.xyz *= light;
 
 	//color.xyz = gamma(color.xyz);
 
-	FragColor = color;
+	FragColor = vec4(light, 1.0);
 	//FragColor = vec4(light, 1.0);
 	//FragColor = vec4(LightComp.NdotH);
 }
