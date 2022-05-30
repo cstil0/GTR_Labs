@@ -509,6 +509,7 @@ void Renderer::showGBuffers(int width, int height, Camera* camera) {
 	glViewport(width * (1-snd_row_size), height*snd_row_pos, width * snd_row_size, height * snd_row_size);
 	gbuffers_fbo->color_textures[3]->toViewport();
 
+
 	glViewport(0,0, width, height);
 	glEnable(GL_DEPTH_TEST);
 }
@@ -960,7 +961,6 @@ void GTR::Renderer::renderForward(Camera* camera)
 	// gamma correction needs to be applyied after rendering all lights
 	if (typeOfRender == eRenderPipeline::MULTIPASS) {
 		screen_fbo->unbind();
-		//screen_texture->toViewport();
 
 		Shader* col_corr = Shader::Get("col_corr");
 		col_corr->enable();
@@ -980,7 +980,6 @@ void GTR::Renderer::renderForward(Camera* camera)
 	}
 
 	//glViewport(0, 0, 256, 256);
-	//screen_texture->toViewport();
 	//glViewport(0, 0, Application::instance->window_width, Application::instance->window_height);
 }
 
@@ -1008,7 +1007,7 @@ void GTR::Renderer::renderDeferred(Camera* camera)
 		gbuffers_fbo->create(width, height,
 			4, 			//three textures
 			GL_RGBA, 		//four channels
-			GL_UNSIGNED_BYTE, //1 byte
+			GL_FLOAT, //1 byte
 			true);		//add depth_texture
 
 		// fbo to compute the illumination for each pixel
@@ -1134,24 +1133,23 @@ void GTR::Renderer::renderDeferred(Camera* camera)
 		has_directional = lights[lights_size - 1]->light_type == LightEntity::eTypeOfLight::DIRECTIONAL && lights[lights_size - 1]->visible;
 	}
 	if (!lights.size() || !has_directional) {
-		if (lights.size())
-			int p = 0;
 		shader->disable();
 		// Creo otro shader por qué ahora pintaremos un quad en lugar de esferas, y entonces necesitaremos el quad.vs y las uv habituales de la textura
 		Shader* shader_ambient = Shader::Get("deferred_ambient");
 		shader_ambient->enable();
 		shader_ambient->setUniform("u_ambient_light", scene->ambient_light);
+		shader_ambient->setUniform("u_gamma", gamma);
 		shader_ambient->setUniform("u_gb0_texture", gbuffers_fbo->color_textures[0], 0);
 		shader_ambient->setUniform("u_gb1_texture", gbuffers_fbo->color_textures[1], 1);
 		shader_ambient->setUniform("u_gb2_texture", gbuffers_fbo->color_textures[2], 2);
 		shader_ambient->setUniform("u_gb3_texture", gbuffers_fbo->color_textures[3], 3);
-		shader_ambient->setUniform("u_depth_texture", gbuffers_fbo->depth_texture, 4);
 		//shader_ambient->setUniform("u_light_color", Vector3(0.0, 0.0, 0.0));
 		quad->render(GL_TRIANGLES);
 		shader_ambient->disable();
 	}
-
+	shader->enable();
 	int i_shadow = 0;
+
 	for (int i = 0; i < lights.size(); i++) {
 		// emissive texture
 		if (i == 0)
@@ -1176,7 +1174,7 @@ void GTR::Renderer::renderDeferred(Camera* camera)
 			glDisable(GL_BLEND);
 		}
 		else {
-			glBlendFunc(GL_SRC_ALPHA, GL_ONE);
+			glBlendFunc(GL_ONE, GL_ONE);
 			glEnable(GL_BLEND);
 		}
 		sphere->radius = light->max_distance;
@@ -1229,27 +1227,22 @@ void GTR::Renderer::renderDeferred(Camera* camera)
 
 	glDisable(GL_BLEND);
 
-	// CANVIAR GAMMA BOOL A COL_COR
-	// PONER ESTE BOOL FUERA TAMBIÉN PARA MULTI Y SINGLE (CREO QUE ES MÁS EFICIENTE)
-	if (gamma) {
-		Shader* col_corr = Shader::Get("col_corr");
-		col_corr->enable();
-		col_corr->setUniform("u_screen_texture", illumination_fbo->color_textures[0], 0);
-		col_corr->setUniform("u_gamma", gamma);
-		col_corr->setUniform("u_tonemapping", tonemapping);
-		col_corr->setUniform("u_lumwhite2", lumwhite2);
-		col_corr->setUniform("u_average_lum", averagelum);
-		col_corr->setUniform("u_scale", scale);
+	//// CANVIAR GAMMA BOOL A COL_COR
+	//// PONER ESTE BOOL FUERA TAMBIÉN PARA MULTI Y SINGLE (CREO QUE ES MÁS EFICIENTE)
+	Shader* col_corr = Shader::Get("col_corr");
+	col_corr->enable();
+	col_corr->setUniform("u_gamma", gamma);
+	col_corr->setUniform("u_screen_texture", illumination_fbo->color_textures[0], 0);
+	col_corr->setUniform("u_tonemapping", tonemapping);
+	col_corr->setUniform("u_lumwhite2", lumwhite2);
+	col_corr->setUniform("u_average_lum", averagelum);
+	col_corr->setUniform("u_scale", scale);
+	col_corr->setUniform("u_depth_texture", gbuffers_fbo->depth_texture, 1);
 
-		//col_corr->setUniform("u_screen_texture", screen_texture, 0);
-		Mesh* quad_final = Mesh::getQuad();
-		quad_final->render(GL_TRIANGLES);
-		col_corr->disable();
-
-	}
-	else {
-		illumination_fbo->color_textures[0]->toViewport();
-	}
+	//col_corr->setUniform("u_screen_texture", screen_texture, 0);
+	Mesh* quad_final = Mesh::getQuad();
+	quad_final->render(GL_TRIANGLES);
+	col_corr->disable();
 
 	//glViewport(0,0,256,256);
 	//illumination_fbo->color_textures[0]->toViewport();
@@ -1580,7 +1573,7 @@ void Renderer::setMultipassParameters(GTR::Material* material, Shader* shader, M
 
 		// Activate blending again for the rest of lights to do the interpolation
 		glEnable(GL_BLEND);
-		glBlendFunc(GL_SRC_ALPHA, GL_ONE);
+		glBlendFunc(GL_ONE, GL_ONE);
 
 		// Reset ambient light to add it only once
 		ambient_light = vec3(0.0, 0.0, 0.0);
@@ -1615,10 +1608,14 @@ void GTR::Renderer::renderInMenu() {
 		setLightsVisible();
 	//ImGui::Checkbox("Bona nit", &bona_nit);
 	ImGui::Checkbox("Show Shadowmap", &show_shadowmap);
-	if (pipeline == ePipeline::DEFERRED)
+	if (pipeline == ePipeline::DEFERRED) {
 		ImGui::Checkbox("Show GBuffers", &show_buffers);
+	}
+	else {
+		ImGui::Combo("Textures", &debug_texture, "COMPLETE\0NORMAL\0OCCLUSION\0EMISSIVE\0METALNESS\0ROUGHNESS");
+	}
+
 	ImGui::Combo("Shadowmaps", &debug_shadowmap, "SPOT1\0SPOT2\0POINT1\0POINT2\0POINT3\0POINT4\0POINT5\0DIRECTIONAL");
-	ImGui::Combo("Textures", &debug_texture, "COMPLETE\0NORMAL\0OCCLUSION\0EMISSIVE");
 }
 
 

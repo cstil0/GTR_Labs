@@ -38,7 +38,9 @@ namespace GTR {
 			COMPLETE,
 			NORMAL,
 			OCCLUSION,
-			EMISSIVE
+			EMISSIVE,
+			METALNESS,
+			ROUGHNESS
 		};
 
 		enum ePipeline {
