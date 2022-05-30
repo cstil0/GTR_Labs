@@ -1086,7 +1086,7 @@ void GTR::Renderer::renderDeferred(Camera* camera)
 
 	illumination_fbo->bind();
 	glClearColor(scene->background_color.x, scene->background_color.y, scene->background_color.z, 1.0);
-	//glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+	glClear(GL_COLOR_BUFFER_BIT);
 	//gbuffers_fbo->depth_texture->copyTo(illumination_fbo->depth_texture);
 
 	// NO TESTEAMOS DEPTH POR QUE YA HEMOS RENDERIZADO LAS TEXTURAS CON LAS OCLUSIONES
@@ -1128,7 +1128,14 @@ void GTR::Renderer::renderDeferred(Camera* camera)
 
 	glEnable(GL_CULL_FACE);
 
-	if (!lights.size()) {
+	bool has_directional = true;
+	if (lights.size()) {
+		int lights_size = lights.size();
+		has_directional = lights[lights_size - 1]->light_type == LightEntity::eTypeOfLight::DIRECTIONAL && lights[lights_size - 1]->visible;
+	}
+	if (!lights.size() || !has_directional) {
+		if (lights.size())
+			int p = 0;
 		shader->disable();
 		// Creo otro shader por qué ahora pintaremos un quad en lugar de esferas, y entonces necesitaremos el quad.vs y las uv habituales de la textura
 		Shader* shader_ambient = Shader::Get("deferred_ambient");
@@ -1143,6 +1150,7 @@ void GTR::Renderer::renderDeferred(Camera* camera)
 		quad->render(GL_TRIANGLES);
 		shader_ambient->disable();
 	}
+
 	int i_shadow = 0;
 	for (int i = 0; i < lights.size(); i++) {
 		// emissive texture
@@ -1189,10 +1197,8 @@ void GTR::Renderer::renderDeferred(Camera* camera)
 		if (light->cast_shadows) {
 			i_shadow += 1;
 		}
-		if (light->light_type == LightEntity::eTypeOfLight::DIRECTIONAL)
-			sphere->render(GL_TRIANGLES);
-		else
-			sphere->render(GL_TRIANGLES);
+
+		sphere->render(GL_TRIANGLES);
 
 		temp_ambient = Vector3(0.0, 0.0, 0.0);  // CAMBIAR AMBIENT DESPUÉS DE LA PRIMERA ITERACIÓN
 		glFrontFace(GL_CCW);

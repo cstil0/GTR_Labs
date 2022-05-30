@@ -1392,6 +1392,7 @@ uniform sampler2D u_gb1_texture;
 uniform sampler2D u_gb2_texture;
 uniform sampler2D u_gb3_texture;
 uniform sampler2D u_depth_texture;
+uniform sampler2D u_ssao_texture;
 
 //uniform int u_normal_text_bool;
 uniform int u_texture2show;
@@ -1523,6 +1524,7 @@ void main()
 	vec4 gb1_color = texture(u_gb1_texture, uv);
 	vec4 gb2_color = texture(u_gb2_texture, uv);  
 	vec4 gb3_color = texture(u_gb3_texture, uv); // occ-met-rough
+	float ao_factor = texture(u_ssao_texture, uv).x;
 
 	float depth = texture( u_depth_texture, uv ).x;
 	vec4 screen_pos = vec4(uv.x*2.0-1.0, uv.y*2.0-1.0, depth*2.0-1.0, 1.0);

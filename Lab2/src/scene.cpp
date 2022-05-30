@@ -245,7 +245,7 @@ void GTR::LightEntity::renderInMenu() {
 
 	}
 	if (cast_shadows) {
-		ImGui::SliderFloat("Shadow Bias", &shadow_bias, 0.00001, 0.5);
+		ImGui::SliderFloat("Shadow Bias", &shadow_bias, 0.001, 0.5);
 	}
 #endif
 
