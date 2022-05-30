@@ -1015,7 +1015,7 @@ void GTR::Renderer::renderDeferred(Camera* camera)
 		illumination_fbo->create(width, height,
 			1, 			//three textures
 			GL_RGBA, 		//four channels
-			GL_UNSIGNED_BYTE, //1 byte
+			GL_FLOAT, //1 byte
 			true);		//add depth_texture
 
 		ssao_fbo->create(width, height, // MIRAR SI CON MENOS TAMAÑO NO PERDEMOS MUCHO
@@ -1647,7 +1647,7 @@ std::vector<Vector3> GTR::generateSpherePoints(int num, float radius, bool hemi)
 {
 	std::vector<Vector3> points;
 	points.resize(num);
-	for (int i = 0; i < num; i += 3)
+	for (int i = 0; i < num; i += 1)
 	{
 		Vector3& p = points[i];
 		float u = random();

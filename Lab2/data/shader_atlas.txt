@@ -681,14 +681,14 @@ void main()
 	vec4 color = u_color;
 	vec4 texture_color = texture( u_texture, v_uv );
 
-	vec3 linear_light_color = u_light_color;
-	vec3 light = vec3(u_ambient_light);
+	vec3 light = u_ambient_light;
 
+	vec3 light_color = u_light_color;
 	if (u_gamma == 1){
-		color = degamma4(u_color);
-		texture_color = degamma4(texture_color);
-		light = degamma(vec3(u_ambient_light));
-		linear_light_color = degamma(u_light_color);
+		color.xyz = degamma(u_color.xyz);
+		texture_color.xyz = degamma(texture_color.xyz);
+		light = degamma(vec3(light));
+		light_color = degamma(light_color);
 	}
 
 	color *= texture_color;
@@ -722,7 +722,7 @@ void main()
 	}
 
 	computeAttenuation(LightComp);
-	light += linear_light_color * LightComp.NdotL * LightComp.att_factor * LightComp.spot_factor * LightComp.shadow_factor;
+	light += light_color * LightComp.NdotL * LightComp.att_factor * LightComp.spot_factor * LightComp.shadow_factor;
 	//}
 
 	// Apply other textures
@@ -760,7 +760,6 @@ void main()
 	
 	FinalColor = color;
 	//computeL_point(LightComp);
-	//FinalColor = vec4(LightComp.world_position, 1.0);
 
 }
 
@@ -1020,14 +1019,18 @@ void main()
 	LightComp.N = normalize(gb1_color.xyz * 2.0 - vec3(1.0)); // PASAMOS DE [0, 1] A [-1, 1]
 
 	vec4 color = vec4(gb0_color.xyz, 1.0);
-
-	if (u_gamma == 1){
-		color.xyz = degamma(color.xyz);
-	}
-
 	float ao_factor = texture(u_ssao_texture, uv).x;
 
-	vec3 light = vec3(u_ambient_light) * ao_factor;
+	vec3 light = u_ambient_light;
+
+	vec3 light_color = u_light_color;
+	if (u_gamma == 1){
+		color.xyz = degamma(color.xyz);
+		light = degamma(light);
+		light_color = degamma(light_color);
+	}
+
+	light *= ao_factor;
 
 	// Point
 	if (u_light_type == 1){
@@ -1052,7 +1055,7 @@ void main()
 	}
 
 	computeAttenuation(LightComp);
-	light += u_light_color * LightComp.NdotL * LightComp.att_factor * LightComp.spot_factor * LightComp.shadow_factor;
+	light += light_color * LightComp.NdotL * LightComp.att_factor * LightComp.spot_factor * LightComp.shadow_factor;
 
 	// Apply other textures
 	// Emissive
@@ -1066,8 +1069,8 @@ void main()
 
 	//FragColor = vec4(depth, depth, depth, 1.0);
 	//FragColor = vec4(u_light_direction, 1.0);
-	//FragColor = vec4(LightComp.world_position, 1.0);
-	//FragColor = texture(u_gb1_texture, v_uv);
+	//FragColor = vec4(, 1.0);
+	//FragColor = vec4(degamma(texture(u_gb0_texture, uv).xyz),1.0);
 	FragColor = color;
 }
 
@@ -1270,7 +1273,7 @@ void main()
 	vec2 uv = v_uv;
 
 	vec4 color = u_color;
-	color *= texture(u_texture, uv);
+	vec4 color_texture = texture(u_texture, uv);
 	vec4 emissive = texture(u_emissive_texture, uv);
 	vec4 met_rough = texture(u_met_rough_texture, uv);
 	float occlusion = texture(u_occlusion_texture, uv).x;
@@ -1286,12 +1289,19 @@ void main()
 	float metalness = met_rough.y;
 	float roughness = met_rough.z;
 
+	vec3 light = vec3(0.0);
+	vec3 ambient_light = vec3(u_ambient_light);
+
+	vec3 light_color = u_light_color;
+
 	if (u_gamma == 1)
 		color.xyz = degamma(color.xyz);
+		color_texture.xyz = degamma(color_texture.xyz);
+		ambient_light = degamma(ambient_light);
+		light_color = degamma(light_color);
 
-	vec3 light = vec3(0.0);
-	//vec3 light = vec3(u_ambient_light);
 
+	color *= color_texture;
 	// Point
 	if (u_light_type == 1){
 		computeL_point(LightComp);
@@ -1339,12 +1349,12 @@ void main()
 	}
 
 	computeAttenuation(LightComp);
-	vec3 lightParams = u_light_color * LightComp.att_factor * LightComp.spot_factor * LightComp.shadow_factor;
+	vec3 lightParams = light_color * LightComp.att_factor * LightComp.spot_factor * LightComp.shadow_factor;
 
 	//compute how much light received the pixel
 	//vec3 lightParams = u_light_color * u_light_intensity * att * shadow_factor;
 	//modulate direct light by light received
-	light += lightParams * direct;
+	light += lightParams * direct + ambient_light;
 
 	//light += lightParams;
 
@@ -1355,10 +1365,10 @@ void main()
 	// Occlusion
 	light *= occlusion;
 	light *= met_rough.x;
-	color.xyz *= light;
+	//color.xyz *= light;
 
-	//FragColor = color;
-	FragColor = vec4(light, 1.0);
+	FragColor = vec4(light,1.0);
+	//FragColor = vec4(light, 1.0);
 	//FragColor = vec4((u_ambient_light + lightParams)*direct, 1.0);
 }
 
@@ -1525,13 +1535,13 @@ void main()
 	float metalness = gb3_color.y;
 	float roughness = gb3_color.z;
 
-	vec3 light = vec3(u_ambient_light);
+	vec3 light = u_ambient_light;
 	vec3 light_color = u_light_color;
 
 	if (u_gamma == 1)
 		//color.xyz = degamma(color.xyz);
 		light = degamma(light);
-		light_color = degamma(u_light_color);
+		light_color = degamma(light_color);
 
 	// Point
 	if (u_light_type == 1){
