@@ -158,7 +158,6 @@ namespace GTR {
 		void setLightsVisible();
 		void setLightsInvisible();
 		void renderInMenu();
-
 		
 	};
 

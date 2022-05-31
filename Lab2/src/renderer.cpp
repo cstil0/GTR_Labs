@@ -533,6 +533,7 @@ void GTR::Renderer::renderTransparentMaterial(const Matrix44 model, Mesh* mesh, 
 	Vector3 ambient_light = scene->ambient_light;
 	shader->setUniform("u_ambient_light", ambient_light);
 	shader->setUniform("u_light_color", Vector3(0.0, 0.0, 0.0));
+	shader->setUniform("u_light_is_first", true);
 
 	mesh->render(GL_TRIANGLES);
 
@@ -776,7 +777,10 @@ void GTR::Renderer::renderDeferred(Camera* camera)
 
 	// apply illumination
 	illumination_fbo->bind();
+
 	glClearColor(scene->background_color.x, scene->background_color.y, scene->background_color.z, 1.0);
+
+	// Clear the color and the depth buffer
 	glClear(GL_COLOR_BUFFER_BIT);
 
 	// don't need to test depth since the objects are already painted
@@ -913,7 +917,6 @@ void GTR::Renderer::applyIllumination_deferred(Scene* scene, Camera* camera, Mat
 		shader_ambient->setUniform("u_gb0_texture", gbuffers_fbo->color_textures[0], 0);
 		shader_ambient->setUniform("u_gb1_texture", gbuffers_fbo->color_textures[1], 1);
 		shader_ambient->setUniform("u_gb2_texture", gbuffers_fbo->color_textures[2], 2);
-		shader_ambient->setUniform("u_gb3_texture", gbuffers_fbo->color_textures[3], 3);
 		quad->render(GL_TRIANGLES);
 		shader_ambient->disable();
 		// set ambient light to zero to avoid adding it again
@@ -981,6 +984,11 @@ void GTR::Renderer::applyIllumination_deferred(Scene* scene, Camera* camera, Mat
 
 	}
 	shader->disable();
+	//glDisable(GL_DEPTH_TEST);
+	//glDepthFunc(GL_LESS);
+	////block writing to the ZBuffer so we do not modify it with our geometry
+	//glDepthMask(true);
+	//glFrontFace(GL_CCW);
 }
 
 // to apply color correction given the scene texture
@@ -995,7 +1003,7 @@ void GTR::Renderer::applyColorCorrection()
 	col_corr->setUniform("u_lumwhite2", lumwhite2);
 	col_corr->setUniform("u_average_lum", averagelum);
 	col_corr->setUniform("u_scale", scale);
-	col_corr->setUniform("u_depth_texture", gbuffers_fbo->depth_texture, 1);
+	col_corr->setUniform("u_depth_texture", illumination_fbo->depth_texture, 1);
 
 	Mesh* quad_final = Mesh::getQuad();
 	quad_final->render(GL_TRIANGLES);

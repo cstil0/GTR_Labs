@@ -28,6 +28,14 @@
 			"scale": [1.11, 1.11, 1.11]
 		},
 		{
+			"name":"car3",
+			"type":"PREFAB",
+			"filename":"prefabs/toyota_land_cruiser/scene.gltf",
+			"position":[-268.2,-1.7,-413.9],
+			"angle":-90,
+			"scale": [1.11, 1.11, 1.11]
+		},
+		{
 			"name":"house",
 			"type":"PREFAB",
 			"filename":"prefabs/house_test/scene.gltf",
@@ -95,7 +103,7 @@
 			"cone_exp":7.3,
 			"light_type":"SPOT",
 			"cast_shadows": true,
-			"shadow_bias": 0.001
+			"shadow_bias": 0.015
 		},
 		{
 			"name":"spot2",
@@ -109,7 +117,21 @@
 			"cone_exp":23,
 			"light_type":"SPOT",
 			"cast_shadows": true,
-			"shadow_bias": 0.001
+			"shadow_bias": 0.037
+		},
+		{
+			"name":"spot3",
+			"type":"LIGHT",
+			"position":[-164.9,31,-427.1],
+			"angle": 100,
+			"color":[1,0.9,0.8],
+			"intensity":3,
+			"max_dist":1000,
+			"cone_angle":35.1,
+			"cone_exp":23,
+			"light_type":"SPOT",
+			"cast_shadows": true,
+			"shadow_bias": 0.037
 		},
 		{
 			"name":"pointlight",
@@ -162,6 +184,36 @@
 			"light_type":"POINT"
 		},
 		{
+			"name":"pointlight6",
+			"type":"LIGHT",
+			"position":[-411.3,34.9,-390.4],
+			"angle": 0,
+			"color":[1,0.2,0.1],
+			"intensity":2.5,
+			"max_dist":70,
+			"light_type":"POINT"
+		},
+		{
+			"name":"pointlight7",
+			"type":"LIGHT",
+			"position":[-406.7,34.9,-433.2],
+			"angle": 0,
+			"color":[1,0.2,0.1],
+			"intensity":2.5,
+			"max_dist":70,
+			"light_type":"POINT"
+		},
+		{
+			"name":"pointlight8",
+			"type":"LIGHT",
+			"position":[208.6,281,-33.6],
+			"angle": 0,
+			"color":[1,0.57,0.51],
+			"intensity":3.7,
+			"max_dist":220,
+			"light_type":"POINT"
+		},
+		{
 			"name":"moonlight",
 			"type":"LIGHT",
 			"position":[150,300,50],
@@ -172,7 +224,7 @@
 			"max_dist":1000,
 			"cast_shadows": true,
 			"light_type":"DIRECTIONAL",
-			"shadow_bias": 0.001
+			"shadow_bias": 0.03
 		}	
 	]
 }

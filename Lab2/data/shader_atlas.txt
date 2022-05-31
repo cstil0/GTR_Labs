@@ -12,8 +12,6 @@ col_corr quad.vs col_corr.fs
 ssao quad.vs ssao.fs
 ssao_plus quad.vs ssao_plus.fs
 depth quad.vs depth.fs
-multi basic.vs multi.fs
-
 
 // ------------------------------ Uniforms ------------------------------
 \light_uniforms
@@ -48,7 +46,6 @@ uniform sampler2D u_met_rough_texture;
 uniform sampler2D u_gb0_texture;
 uniform sampler2D u_gb1_texture;
 uniform sampler2D u_gb2_texture;
-uniform sampler2D u_gb3_texture;
 uniform sampler2D u_depth_texture;
 uniform sampler2D u_ssao_texture;
 
@@ -86,11 +83,6 @@ vec3 degamma(vec3 c)
 	return pow(c,vec3(2.2));
 }
 
-vec4 degamma4(vec4 c)
-{
-	return pow(c,vec4(2.2));
-}
-
 // from linear values to gamma (perception) values
 vec3 gamma(vec3 c)
 {
@@ -99,8 +91,9 @@ vec3 gamma(vec3 c)
 
 \light_functions_multi
 
-// estas variables solo estan en multipass, pero como deferred también lee de 
-// aquí las definimos para que no pete la función computeN aunque deferred no la necesite 
+// we define this variables here because only multipass uses them, but since deferred also
+// needs this functions, we need to define them to avoid errors in computeN function even though deferred does not use them
+
 in vec3 v_normal;
 uniform sampler2D u_normal_texture;
 uniform int u_normal_text_bool;
@@ -183,18 +176,6 @@ void computeAttenuation(inout LightStruct lc){
 	lc.att_factor = pow(att_factor,2);
 }
 
-vec4 assignMapPiece(int index){
-	// !!!!!!!!!!!!HARCODEADO
-	if (index == 0)
-		return vec4(0.5, 0.5, 0, 0);
-	else if (index == 1)
-		return vec4(0.5, 0.5, 0, 0.5);
-	else if (index == 2)
-		return vec4(0.5, 0.5, 0.5, 0);
-	else
-		return vec4(0.5, 0.5, 0.5, 0.5);
-}
-
 void testShadowMap(inout LightStruct lc){
 	//project our 3D position to the shadowmap
 	vec4 proj_pos = u_light_shadowmap_vpm * vec4(lc.world_position, 1.0);
@@ -210,13 +191,9 @@ void testShadowMap(inout LightStruct lc){
 	
 	//normalize from [-1..+1] to [0..+1] still non-linear
 	real_depth = real_depth * 0.5 + 0.5;
-
-	//float real_depth = getRealDepth(proj_pos);
 	
 	//read depth from depth buffer in [0..+1] non-linear
-	//vec4 scale_factor = assignMapPiece(u_shadow_i);
 	vec4 scale_factor = u_map_piece;
-	//vec2 sh_uv = vec2(shadow_uv.x*0.5 + 0.5, shadow_uv.y*0.5 + 0.5);
 	vec2 sh_uv = vec2(shadow_uv.x*scale_factor[0] + scale_factor[2], shadow_uv.y*scale_factor[1] + scale_factor[3]);
 	float shadow_depth = texture( u_light_shadowmap, sh_uv).x;
 	
@@ -305,11 +282,13 @@ void computeAttenuation(inout LightStruct lc, int i){
 	lc.att_factor = pow(att_factor,2);
 }
 
+// Assign each light to their corresponding space in the shadowmap atlas
 vec4 assignMapPiece(int index){
 	int num_cols = int(ceil(sqrt(u_num_lights_shadow)));
 	int num_rows;
-	if (u_num_lights_shadow <= num_cols * (num_cols - 1)) // last row remains empty
-		num_rows = num_cols - 1;                 // eliminate it
+
+	if (u_num_lights_shadow <= num_cols * (num_cols - 1))
+		num_rows = num_cols - 1;
 	else
 		num_rows = num_cols;
 
@@ -340,10 +319,8 @@ void testShadowMap(inout LightStruct lc, int i, int sh_i){
 	
 	//read depth from depth buffer in [0..+1] non-linear
 	vec4 scale_factor = assignMapPiece(sh_i);
-	//vec2 sh_uv = vec2(shadow_uv.x*0.5 + 0.5, shadow_uv.y*0.5 + 0.5);
 	vec2 sh_uv = vec2(shadow_uv.x*scale_factor[0] + scale_factor[2], shadow_uv.y*scale_factor[1] + scale_factor[3]);
 	float shadow_depth = texture( u_lights_shadowmap, sh_uv).x;
-	//float shadow_depth = texture( u_lights_shadowmap, shadow_uv).x;
 	
 	//compute final shadow factor by comparing
 	lc.shadow_factor = 1.0;
@@ -393,9 +370,6 @@ float G_Smith( float NdotV, float NdotL, float roughness)
 vec3 Fd_Burley ( const in float NoV, const in float NoL, const in float LoH, const in float linearRoughness)
 {
         vec3 f90 = 0.5 + 2.0 * vec3(linearRoughness) * LoH * LoH;
-		// REVISAR
-		//float lightScatter = F_Schlick(NoL, f90);
-        //float viewScatter  = F_Schlick(NoV, f90);
 
         vec3 lightScatter = F_Schlick(NoL, f90);
         vec3 viewScatter  = F_Schlick(NoV, f90);
@@ -411,21 +385,15 @@ vec3 specularBRDF( float roughness, vec3 f0, float NoH, float NoV, float NoL, fl
 	float D = D_GGX( NoH, a );
 
 	// Fresnel Function
-	// REVISAR
-	//float F = F_Schlick( LoH, f0.x );
 	vec3 F = F_Schlick( LoH, f0 );
 
 	// Visibility Function (shadowing/masking)
 	float G = G_Smith( NoV, NoL, roughness );
 		
 	// Norm factor
-	// REVISAR
-	//float spec = D * G * F;
 	vec3 spec = D * G * F;
 	spec /= (4.0 * NoL * NoV + 1e-6);
 
-	// REVISAR
-	// return vec3(spec);
 	return spec;
 }
 
@@ -613,10 +581,13 @@ void main()
 	if(color.a < u_alpha_cutoff)
 		discard;
 
+	// Emissive
+	vec3 emissive = texture( u_emissive_texture, v_uv ).xyz;
 	vec3 light = vec3(u_ambient_light);
 	if (u_gamma == 1)
 		color.xyz = degamma(color.xyz);
 		light = degamma(light);
+		emissive = degamma(emissive);
 
 	// index to store the number of lights casting shadows
 	int l_shadow_i = 0;
@@ -661,7 +632,6 @@ void main()
 		if (u_lights_cast_shadows[i] == 1){
 			testShadowMap(LightComp, i, l_shadow_i);
 			l_shadow_i += 1;
-
 		}
 
 		computeNdotL(LightComp);
@@ -670,18 +640,8 @@ void main()
 	}
 
 	// Apply other textures
-	// Emissive
-	vec3 emissive = texture( u_emissive_texture, v_uv ).xyz;
-
-	if (u_gamma == 1)
-	{
-		light += degamma(emissive);
-		//light *= degamma (occlusion);
-	}
-	else
-	{
-		light += emissive;
-	}
+	//Emissive
+	light += emissive;
 
 	// Occlusion can be either in the met_rou or occlusion texture
 	light *= texture( u_occlusion_texture, v_uv ).x;
@@ -720,7 +680,6 @@ void main()
 
 in vec3 v_position;
 in vec3 v_world_position;
-//in vec3 v_normal;
 in vec2 v_uv;
 in vec4 v_color;
 
@@ -734,24 +693,16 @@ uniform float u_alpha_cutoff;
 // Color correction
 uniform int u_gamma;
 
-
 //Textures
 uniform int u_texture2show;
-//uniform int u_normal_text_bool;
-//uniform sampler2D u_normal_texture;
 
-// Light parameters
-
-
-//out vec4 FragColor;
-layout(location = 0) out vec4 FinalColor;
+out vec4 FragColor;
 
 #include texture_uniforms
 #include light_uniforms
 #include normalmap_functions
 #include degamma
 #include light_functions_multi
-
 
 void main()
 {
@@ -785,13 +736,17 @@ void main()
 	vec4 texture_color = texture( u_texture, v_uv );
 
 	vec3 light = u_ambient_light;
-
 	vec3 light_color = u_light_color;
+
+	// Emissive
+	vec3 emissive = texture( u_emissive_texture, v_uv ).xyz;
+
 	if (u_gamma == 1){
 		color.xyz = degamma(u_color.xyz);
 		texture_color.xyz = degamma(texture_color.xyz);
 		light = degamma(vec3(light));
 		light_color = degamma(light_color);
+		emissive = degamma(emissive);
 	}
 
 	color *= texture_color;
@@ -815,7 +770,6 @@ void main()
 		computeL_directional(LightComp);
 	}
 
-	//if (LightComp.light_dist <= u_light_max_distance){
 	computeN(LightComp);
 
 	computeNdotL(LightComp);
@@ -826,11 +780,9 @@ void main()
 
 	computeAttenuation(LightComp);
 	light += light_color * LightComp.NdotL * LightComp.att_factor * LightComp.spot_factor * LightComp.shadow_factor;
-	//}
 
 	// Apply other textures
-	// Emissive
-	//light += texture( u_emissive_texture, v_uv ).xyz;
+	light += emissive;
 
 	// Occlusion
 	// x coord has occlusion map
@@ -839,12 +791,6 @@ void main()
 	light *= texture( u_occlusion_texture, v_uv ).x;
 
 	color.xyz *= light;
-
-	if (u_gamma == 1){
-		//if (u_light_is_last == 1){
-		//color.xyz = gamma(color.xyz);    // ESTO NO ESTA BIEN PORQUE NO VUELVO A CONVERTIR A ESPACIO GAMMA
-		//}
-	}
 
 	// Debug textures
 	// Normal
@@ -865,10 +811,7 @@ void main()
 	if (u_light_is_first == 0)
 		color.a = 0.0;
 		
-	//FinalColor = vec4(color.w);
-	FinalColor = color;
-	//computeL_point(LightComp);
-
+	FragColor = color;
 }
 
 // ----------------------------------- GBuffers -----------------------------
@@ -917,7 +860,6 @@ void main()
 		N = perturbNormal(v_N, V, v_uv, normal_pixel);
 	else
 		N = v_N;
-
 
 	// Apply other textures
 	// Emissive
@@ -980,31 +922,30 @@ void main()
 	vec4 gb0_color = texture(u_gb0_texture, uv);
 	//vec4 gb1_color = texture(u_gb1_texture, uv);
 	vec4 gb2_color = texture(u_gb2_texture, uv);
-	vec4 gb3_color = texture(u_gb3_texture, uv);
 
 	vec4 color = vec4(gb0_color.xyz, 1.0);
 	vec3 ambient_light = u_ambient_light;
+
+	// Emissive
+	vec3 emissive = gb2_color.xyz;
+
 	if (u_gamma == 1){
 		color.xyz = degamma(color.xyz);
 		ambient_light = degamma(ambient_light);
+		emissive = degamma(emissive);
 	}
 
 	float ao_factor = texture(u_ssao_texture, uv).x;
 
 	vec3 light = ambient_light * ao_factor;
+	light += emissive;
 
 	// Apply other textures
-	// Emissive
-	light += gb2_color.xyz;
-
-	// Occlusion
-	// Occlusion value is only in one coordinate
-	//light *= gb3_color.x;
+	// Occlusion (Occlusion value is only in one coordinate)
 	light *= gb0_color.w;
 
 	color.xyz *= light;
 
-	//FragColor = vec4(light, 1.0);
 	FragColor = color;
 }
 
@@ -1041,7 +982,6 @@ out vec4 FragColor;
 #include degamma
 #include light_functions_multi
 
-
 void main()
 {
 	LightComp = LightStruct(
@@ -1069,12 +1009,11 @@ void main()
 	
 	vec2 uv = gl_FragCoord.xy * u_iRes.xy;
 
-	vec4 gb0_color = texture(u_gb0_texture, uv);
-	vec4 gb1_color = texture(u_gb1_texture, uv);
-	vec4 gb2_color = texture(u_gb2_texture, uv);
-	vec4 gb3_color = texture(u_gb3_texture, uv);
-
+	vec4 gb0_color = texture(u_gb0_texture, uv); // Color + metalness
+	vec4 gb1_color = texture(u_gb1_texture, uv); // Normal + roughness
+	vec4 gb2_color = texture(u_gb2_texture, uv); // Emissive + occlusion
 	float depth = texture( u_depth_texture, uv ).x;
+
 	vec4 screen_pos = vec4(uv.x*2.0-1.0, uv.y*2.0-1.0, depth*2.0-1.0, 1.0);
 	vec4 proj_worldpos = u_inverse_viewprojection * screen_pos;
 	LightComp.world_position = proj_worldpos.xyz / proj_worldpos.w;
@@ -1091,6 +1030,7 @@ void main()
 		color.xyz = degamma(color.xyz);
 		light = degamma(light);
 		light_color = degamma(light_color);
+		gb2_color.xyz = degamma(gb2_color.xyz);
 	}
 
 	light *= ao_factor;
@@ -1126,12 +1066,10 @@ void main()
 
 	// Occlusion
 	// Occlusion value is only in one coordinate
-	//	light *= gb3_color.x;
 	light *= gb0_color.w;
 
 	color.xyz *= light;
 
-	//FragColor = gb2_color;
 	FragColor = color;
 }
 
@@ -1179,14 +1117,8 @@ void main(){
 	// margen de 0.1 ya que el chasis del coche por ejemplo tiene un poco de transparencia pero queremos aplicarle gamma
 	if (u_gamma == 1 && color.w >= 0.9)
 		rgb = gamma(rgb);
-
-
-	//rgb = pow( rgb, vec3( u_igamma ) );
 	
 	FragColor = vec4( rgb, color.a );
-	//FragColor = vec4(color.w);
-	//FragColor = color;
-	//FragColor = vec4(1.0);
 }
 
 
@@ -1200,7 +1132,6 @@ void main(){
 
 in vec3 v_position;
 in vec3 v_world_position;
-//in vec3 v_normal;
 in vec2 v_uv;
 in vec4 v_color;
 
@@ -1218,7 +1149,6 @@ uniform int u_texture2show;
 
 uniform mat4 u_inverse_viewprojection;
 uniform vec2 u_iRes;
-
 
 out vec4 FragColor;
 
@@ -1268,7 +1198,6 @@ void main()
 		discard;
 
 	computeN(LightComp);
-	//LightComp.N = normalize(gb1_color.xyz * 2.0 - vec3(1.0)); // PASAMOS DE [0, 1] A [-1, 1]
 
 	float metalness = met_rough.y;
 	float roughness = met_rough.z;
@@ -1283,6 +1212,7 @@ void main()
 		color_texture.xyz = degamma(color_texture.xyz);
 		ambient_light = degamma(ambient_light);
 		light_color = degamma(light_color);
+		emissive.xyz = degamma(emissive.xyz);
 	}
 
 	color *= color_texture;
@@ -1333,15 +1263,12 @@ void main()
 	}
 
 	computeAttenuation(LightComp);
-	vec3 lightParams = light_color * LightComp.att_factor * LightComp.spot_factor * LightComp.shadow_factor;
 
 	//compute how much light received the pixel
-	//vec3 lightParams = u_light_color * u_light_intensity * att * shadow_factor;
+	vec3 lightParams = light_color * LightComp.att_factor * LightComp.spot_factor * LightComp.shadow_factor;
 	//modulate direct light by light received
 	light += lightParams * direct;
 	light += color_texture.xyz * ambient_light;
-
-	//light += lightParams;
 
 	// Apply other textures
 	// Emissive
@@ -1350,7 +1277,6 @@ void main()
 	// Occlusion
 	light *= occlusion;
 	light *= met_rough.x;
-	//color.xyz *= light;
 
 	// Debug textures
 	// Normal
@@ -1370,9 +1296,9 @@ void main()
 	if (u_light_is_first == 0)
 		color.a = 0.0;
 
-	FragColor = vec4(light,color.a);
-	//FragColor = texture(u_emissive_texture, v_uv);
-	//FragColor = vec4((u_ambient_light + lightParams)*direct, 1.0);
+	FragColor = vec4(light,color.w);
+	//if (color.w < 0.9)
+	//	FragColor = vec4(1.0);
 }
 
 //-----------------------------PBR Deferred -------------------------------
@@ -1389,7 +1315,6 @@ uniform vec4 u_color;
 uniform float u_time;
 uniform float u_alpha_cutoff;
 
-//uniform int u_normal_text_bool;
 uniform int u_texture2show;
 
 uniform mat4 u_inverse_viewprojection;
@@ -1437,7 +1362,6 @@ void main()
 	vec4 gb0_color = texture(u_gb0_texture, uv);
 	vec4 gb1_color = texture(u_gb1_texture, uv);
 	vec4 gb2_color = texture(u_gb2_texture, uv);  
-	//vec4 gb3_color = texture(u_gb3_texture, uv); // occ-met-rough
 	float ao_factor = texture(u_ssao_texture, uv).x;
 
 	float depth = texture( u_depth_texture, uv ).x;
@@ -1460,6 +1384,7 @@ void main()
 		color.xyz = degamma(color.xyz);
 		ambient_light = degamma(ambient_light);
 		light_color = degamma(light_color);
+		gb2_color.xyz = degamma(gb2_color.xyz);
 	}
 
 	// Point
@@ -1486,7 +1411,6 @@ void main()
 	//metallic materials do not have diffuse
 	vec3 diffuseColor = (1.0 - metalness) * color.xyz;
 
-	// METER EN UNA FUNCION
 	LightComp.V = normalize(u_camera_position - LightComp.world_position);
 	LightComp.H = normalize(LightComp.V + LightComp.L);
 
@@ -1509,10 +1433,9 @@ void main()
 	}
 
 	computeAttenuation(LightComp);
-	vec3 lightParams = light_color * LightComp.att_factor * LightComp.spot_factor * LightComp.shadow_factor;
 
 	//compute how much light received the pixel
-	//vec3 lightParams = u_light_color * u_light_intensity * att * shadow_factor;
+	vec3 lightParams = light_color * LightComp.att_factor * LightComp.spot_factor * LightComp.shadow_factor;
 
 	//modulate direct light by light received
 	light += direct * lightParams;
@@ -1523,17 +1446,9 @@ void main()
 
 	// Occlusion
 	// Occlusion value is only in one coordinate
-	//light *= gb3_color.x;
-	// NO SE POR QUE NO SE PILLA BIEN SI NO VUELVO A COGER EL TEXTURE
 	light *= texture(u_gb2_texture, uv).w;
 
-	//color.xyz *= light;
-
-	//color.xyz = gamma(color.xyz);
-
-	FragColor = vec4(light, color.a);
-	//FragColor = vec4(roughness);
-	//FragColor = vec4(LightComp.NdotH);
+	FragColor = vec4(light, 1.0);
 }
 
 //-------------------------------- SSAO --------------------------------------
@@ -1543,7 +1458,6 @@ void main()
 in vec2 v_uv;
 
 uniform sampler2D u_gb1_texture;
-uniform sampler2D u_gb3_texture;
 uniform sampler2D u_depth_texture;
 
 uniform mat4 u_viewprojection;
@@ -1612,8 +1526,7 @@ void main()
 	//finally, compute the AO factor as the ratio of visible points
 	float ao = float(num) / float(samples);
 
-	//float ambient_factor = texture( u_gb3_texture, uv ).x;
-	FragColor = vec4(ao); // * ambient_factor;
+	FragColor = vec4(ao);
 
 }
 
@@ -1624,7 +1537,6 @@ void main()
 in vec2 v_uv;
 
 uniform sampler2D u_gb1_texture;
-uniform sampler2D u_gb3_texture;
 uniform sampler2D u_depth_texture;
 
 uniform mat4 u_viewprojection;
@@ -1642,7 +1554,6 @@ void main()
 	float depth = texture( u_depth_texture, uv ).x;
 	vec3 gb1_color = texture(u_gb1_texture, uv).xyz; //desconvertir rango
 	vec3 normal = normalize(gb1_color * 2.0 - vec3(1.0));
-	//float ambient_factor = texture( u_gb3_texture, uv ).x;
 
 	//ignore pixels in the background
 	if(depth >= 1.0)
@@ -1658,20 +1569,18 @@ void main()
 	vec3 world_position = proj_worldpos.xyz / proj_worldpos.w;
 
 	const int samples = 64;
-	float num = samples; //num inicial de muestras que no estan ocluidas
+	float num = samples; //inicial non-occluded samples
 
 	//to create the matrix33 to convert from tangent to world
 	mat3 rotmat = cotangent_frame( normal, world_position, uv );
-
 
 	//for every sample around the point
 	for( int i = 0; i < samples; ++i )
 	{
 		//compute is world position using the random
 		vec3 delta = u_points[i] * 10.0;
-		//float angle = gl_FragCoord.x * 1013.89 + gl_FragCoord.y * 1031.41;
-		//delta = rotateY( angle, delta );
 		vec3 p = world_position + delta;
+
 		//rotate a point is easy
 		vec3 rotated_point = world_position + rotmat * delta;
 
@@ -1702,8 +1611,7 @@ void main()
 	//finally, compute the AO factor as the ratio of visible points
 	float ao = float(num) / float(samples);
 
-	FragColor = vec4(ao); // * ambient_factor;
-	//FragColor = vec4(normal	,1.0);
+	FragColor = vec4(ao);
 }
 
 //---------------------------------- Depth ----------------------------------------
