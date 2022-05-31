@@ -895,7 +895,6 @@ uniform sampler2D u_normal_texture;
 layout(location = 0) out vec4 GB0;
 layout(location = 1) out vec4 GB1;
 layout(location = 2) out vec4 GB2;
-layout(location = 3) out vec4 GB3;
 
 #include texture_uniforms
 #include normalmap_functions
@@ -940,8 +939,7 @@ void main()
 	// to recover negative values
 	GB1 = vec4(N * 0.5 + vec3(0.5), roughness_factor);
 	GB2 = vec4(emissive, occlusion_factor);
-	// CREAR GBUFFERS SEPARADOS..??
-	GB3 = vec4(color.w);
+
 }
 
 //------------------------------- Deferred Ambient ---------------------------

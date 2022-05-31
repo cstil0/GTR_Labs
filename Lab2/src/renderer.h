@@ -28,7 +28,7 @@ namespace GTR {
 	// Separating the render from anything else makes the code cleaner
 	class Renderer
 	{
-		// CREO QUE ESTO ESTARIA MAS BONITO EN RENDERER... NO SE QUE HACE AQUÍ
+		// Enums
 		enum eRenderPipeline {
 			SINGLEPASS,
 			MULTIPASS
@@ -63,46 +63,48 @@ namespace GTR {
 		int max_lights;
 		int num_lights_shadows;
 
+		// FBOs
 		FBO* fbo;
-		Texture* shadowmap;
-		ePipeline pipeline;
-		int typeOfRender;
-
-		Texture* screen_texture;
+		FBO* gbuffers_fbo;
+		FBO* illumination_fbo;
 		FBO* screen_fbo;
+		FBO* ssao_fbo;
+		Texture* shadowmap;
+		Texture* screen_texture;
+		int width_shadowmap; 
+		int height_shadowmap;
 
 		// Imgui debug parameters
 		bool show_shadowmap;
 		int debug_shadowmap;
 		int debug_texture;
 		bool show_buffers;
+		bool show_ssao;
+		bool pbr;
 
-		FBO* gbuffers_fbo;
-		FBO* illumination_fbo;
+		ePipeline pipeline;
+		int typeOfRender;
 
 		// color correction
 		bool gamma;
 		bool tonemapping;
-
 		float lumwhite2;
 		float averagelum;
 		float scale;
 
 		// ambient occlusion
-		FBO* ssao_fbo;
 		std::vector<Vector3> random_points_sph;
 		std::vector<Vector3> random_points_hemi;
-		bool show_ssao;
 		eSSAOType SSAOType;
 
-		// PBR
-		bool pbr;
-
-		//bool bona_nit; // true-> todo apagado (sin luces), false-> luces visibles
+		// meshes
+		Mesh* sphere;
+		Mesh* quad;
 
 		Renderer();
 
 		// -- Rendercalls manager functions--
+
 		void createRenderCalls(GTR::Scene* scene, Camera* camera);
 		void addRenderCall_node(GTR::Scene* scene, Camera* camera, Node* node, Matrix44 curr_model, Matrix44 parent_model);
 		void sortRenderCalls();
@@ -110,16 +112,14 @@ namespace GTR {
 		static bool compare_distances(const RenderCall rc1, const RenderCall rc2) { return (rc1.distance_to_camera < rc2.distance_to_camera); }
 
 		// -- Shadowmap functions --
-		void showShadowmap(LightEntity* light);
-		// BORRAR
-		void showShadowmapTest(Camera* camera);
+
 		Vector4 assignMapPiece(int width, int height, int index, int num_elements);
 		Vector4 assignMapPiece_shader(int width, int height, int index, int num_elements);
 		void generateShadowmap(LightEntity* light, int index);
-		// BORRAR
-		void generateScreenTexture(Mesh* mesh);
+		void showShadowmap(LightEntity* light);
 
 		// -- Render functions --
+		
 		//renders several elements of the scene
 		void renderScene(GTR::Scene* scene, Camera* camera);
 		// to render the scene using rendercalls vector
@@ -135,16 +135,26 @@ namespace GTR {
 		void renderMeshWithMaterialToGBuffers(const Matrix44 model, Mesh* mesh, GTR::Material* material, Camera* camera);
 		// to render flat objects for generating the shadowmaps
 		void renderFlatMesh(const Matrix44 model, Mesh* mesh, GTR::Material* material, Camera* camera);
-		void showGBuffers(int width, int height, Camera* camera);
 		void renderForward(Camera* camera);
 		void renderDeferred(Camera* camera);
 
+		// -- Deferred functions
+
+		void generateGBuffers(Scene* scene, Camera* camera);
+		void generateSSAO(Camera* camera, Matrix44 inv_vp, int width, int height);
+		void applyIllumination_deferred(Scene* scene, Camera* camera, Matrix44 inv_vp, int width, int height);
+		void applyColorCorrection();
+
 		// -- Upload to shader functions --
+
 		void uploadLightToShader(GTR::LightEntity* light, Shader* shader, Vector3 ambient_light, int shadow_i);
 		void setTextures(GTR::Material* material, Shader* shader);
 		void setSinglepass_parameters(GTR::Material* material, Shader* shader, Mesh* mesh);
 		void setMultipassParameters(GTR::Material* material, Shader* shader, Mesh* mesh);
 
+		// -- Debug functions --
+
+		void showGBuffers(int width, int height, Camera* camera);
 		void setLightsVisible();
 		void setLightsInvisible();
 		void renderInMenu();
