@@ -254,8 +254,11 @@ void Application::renderDebugGUI(void)
 	ImGui::Checkbox("PBR", &renderer->pbr);
 	ImGui::Checkbox("Gamma", &renderer->gamma);
 	ImGui::Checkbox("Tonemapping", &renderer->tonemapping);
-	ImGui::Checkbox("Show SSAO", &renderer->show_ssao);
-	ImGui::Combo("SSAO Type",(int*) &renderer->SSAOType, "SSAO\0SSAO_plus", 2);
+	if (renderer->pipeline == GTR::Renderer::ePipeline::DEFERRED) {
+		ImGui::Checkbox("SSAO", &renderer->ssao);
+		ImGui::Checkbox("Show SSAO", &renderer->show_ssao);
+		ImGui::Combo("SSAO Type", (int*)&renderer->SSAOType, "SSAO\0SSAO_plus", 2);
+	}
 	
 	if (ImGui::TreeNode("Debug Tools")) {
 		renderer->renderInMenu();

@@ -28,6 +28,7 @@ namespace GTR {
 	// Separating the render from anything else makes the code cleaner
 	class Renderer
 	{
+	public:
 		// Enums
 		enum eRenderPipeline {
 			SINGLEPASS,
@@ -53,7 +54,6 @@ namespace GTR {
 			SSAO_plus
 		};
 
-	public:
 
 		// Save only the visible nodes sorted by distance to the camera
 		std::vector<RenderCall> render_calls;
@@ -96,6 +96,7 @@ namespace GTR {
 		std::vector<Vector3> random_points_sph;
 		std::vector<Vector3> random_points_hemi;
 		eSSAOType SSAOType;
+		bool ssao;
 
 		// meshes
 		Mesh* sphere;

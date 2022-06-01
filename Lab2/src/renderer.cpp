@@ -883,7 +883,10 @@ void GTR::Renderer::applyIllumination_deferred(Scene* scene, Camera* camera, Mat
 	shader->setUniform("u_gb0_texture", gbuffers_fbo->color_textures[0], 0);
 	shader->setUniform("u_gb1_texture", gbuffers_fbo->color_textures[1], 1);
 	shader->setUniform("u_depth_texture", gbuffers_fbo->depth_texture, 4);
-	shader->setUniform("u_ssao_texture", ssao_fbo->color_textures[0], 5);
+	if (ssao)
+		shader->setUniform("u_ssao_texture", ssao_fbo->color_textures[0], 5);
+	else
+		shader->setUniform("u_ssao_texture", Texture::getWhiteTexture(), 5);
 
 	shader->setUniform("u_camera_position", camera->eye);
 	//pass the inverse projection of the camera to reconstruct world pos.
@@ -917,6 +920,10 @@ void GTR::Renderer::applyIllumination_deferred(Scene* scene, Camera* camera, Mat
 		shader_ambient->setUniform("u_gb0_texture", gbuffers_fbo->color_textures[0], 0);
 		shader_ambient->setUniform("u_gb1_texture", gbuffers_fbo->color_textures[1], 1);
 		shader_ambient->setUniform("u_gb2_texture", gbuffers_fbo->color_textures[2], 2);
+		if (ssao)
+			shader->setUniform("u_ssao_texture", ssao_fbo->color_textures[0], 5);
+		else
+			shader->setUniform("u_ssao_texture", Texture::getWhiteTexture(), 5);
 		quad->render(GL_TRIANGLES);
 		shader_ambient->disable();
 		// set ambient light to zero to avoid adding it again
