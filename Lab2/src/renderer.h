@@ -1,6 +1,7 @@
 #pragma once
 #include "prefab.h"
 #include "shader.h"
+#include "sphericalharmonics.h"
 #include <string>
 
 //forward declarations
@@ -10,6 +11,22 @@ namespace GTR {
 
 	class Prefab;
 	class Material;
+
+
+	//the struct that holds one probe coeffs
+	//already defined in "sphericalharmonics.h"
+	// struct SphericalHarmonics {
+	//	Vector3 coeffs[9];
+	// };
+
+	//struct to store probes
+	struct sProbe {
+		Vector3 pos; //where is located
+		Vector3 local; //its ijk pos in the matrix
+		int index; //its index in the linear array
+		SphericalHarmonics sh; //coeffs
+	};
+
 
 	class RenderCall {
 	public:
@@ -98,6 +115,8 @@ namespace GTR {
 		eSSAOType SSAOType;
 		bool ssao;
 
+		sProbe probe;
+			
 		// meshes
 		Mesh* sphere;
 		Mesh* quad;
@@ -160,6 +179,7 @@ namespace GTR {
 		void setLightsInvisible();
 		void renderInMenu();
 		
+		void renderProbe(Vector3 pos, float size, float* coeffs);
 	};
 
 	Texture* CubemapFromHDRE(const char* filename);

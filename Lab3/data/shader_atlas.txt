@@ -1,0 +1,1757 @@
+//example of some shaders compiled
+flat basic.vs flat.fs
+texture basic.vs texture.fs
+multi_pass basic.vs light_multi_pass.fs
+single_pass basic.vs light_single_pass.fs
+gbuffers basic.vs gbuffers.fs
+deferred basic.vs deferred.fs
+deferred_ambient quad.vs deferred_ambient.fs
+pbr_multi basic.vs pbr_multi.fs
+deferred_pbr basic.vs deferred_pbr.fs
+col_corr quad.vs col_corr.fs
+ssao quad.vs ssao.fs
+ssao_plus quad.vs ssao_plus.fs
+probe basic.vs probe.fs
+depth quad.vs depth.fs
+
+// ------------------------------ Uniforms ------------------------------
+\light_uniforms
+uniform vec3 u_ambient_light;
+
+uniform int u_light_type;
+uniform vec3 u_light_position;
+uniform vec3 u_light_color;
+uniform float u_light_max_distance;
+uniform vec3 u_light_direction;
+uniform float u_light_cone_cos;
+uniform float u_light_cone_exp;
+
+uniform int u_light_cast_shadows;
+uniform sampler2D u_light_shadowmap;
+uniform mat4 u_light_shadowmap_vpm;
+uniform float u_light_shadow_bias;
+uniform int u_shadow_i;
+uniform vec4 u_map_piece;
+
+
+\texture_uniforms
+
+uniform sampler2D u_texture;
+uniform sampler2D u_emissive_texture;
+uniform sampler2D u_occlusion_texture;
+uniform sampler2D u_met_rough_texture;
+uniform float u_metallic_factor;
+uniform float u_roughness_factor;
+uniform vec3 u_emissive_factor;
+
+
+\gbuffer_texture_uniforms
+
+uniform sampler2D u_gb0_texture;
+uniform sampler2D u_gb1_texture;
+uniform sampler2D u_gb2_texture;
+uniform sampler2D u_depth_texture;
+uniform sampler2D u_ssao_texture;
+
+//------------------------------Functions -------------------------------
+\normalmap_functions
+
+mat3 cotangent_frame(vec3 N, vec3 p, vec2 uv)
+{
+	// get edge vectors of the pixel triangle
+	vec3 dp1 = dFdx( p );
+	vec3 dp2 = dFdy( p );
+	vec2 duv1 = dFdx( uv );
+	vec2 duv2 = dFdy( uv );
+	// solve the linear system
+	vec3 dp2perp = cross( dp2, N );
+	vec3 dp1perp = cross( N, dp1 );
+	vec3 T = dp2perp * duv1.x + dp1perp * duv2.x;
+	vec3 B = dp2perp * duv1.y + dp1perp * duv2.y;
+	// construct a scale-invariant frame 
+	float invmax = inversesqrt( max( dot(T,T), dot(B,B) ) );
+	return mat3( T * invmax, B * invmax, N );
+}
+
+vec3 perturbNormal(vec3 N, vec3 WP, vec2 uv, vec3 normal_pixel)
+{
+	normal_pixel = normal_pixel * 255./127. - 128./127.;
+	mat3 TBN = cotangent_frame(N, WP, uv);
+	return normalize(TBN * normal_pixel);
+}
+
+\degamma
+// from gamma (perception) values to linear values
+vec3 degamma(vec3 c)
+{
+	return pow(c,vec3(2.2));
+}
+
+// from linear values to gamma (perception) values
+vec3 gamma(vec3 c)
+{
+	return pow( c, vec3(1.0/2.2));
+}
+
+\light_functions_multi
+
+// we define this variables here because only multipass uses them, but since deferred also
+// needs this functions, we need to define them to avoid errors in computeN function even though deferred does not use them
+
+in vec3 v_normal;
+uniform sampler2D u_normal_texture;
+uniform int u_normal_text_bool;
+
+// Save computations related to light
+struct LightStruct{
+	vec3 L;
+	vec3 D;
+	vec3 N;
+	vec3 V;
+	vec3 R;
+	vec3 H;
+
+	vec3 world_position;
+
+	float NdotL;
+	float LdotD;
+	float NdotH;
+	float NdotV;
+	float LdotH;
+
+	float light_dist;
+
+	float spot_factor;
+	float att_factor;
+	float shadow_factor;
+}LightComp;
+
+// L vector for point and spot lights
+void computeL_point(inout LightStruct lc){
+	// Distance from current point to light
+	vec3 L = u_light_position - lc.world_position;
+	// Modulus			
+	lc.light_dist = length(L);
+	// Normalize L
+	lc.L = L/lc.light_dist;
+}
+
+// L vector for directional light
+void computeL_directional(inout LightStruct lc){
+	// All points take the same light direction
+	vec3 L = u_light_direction;
+	lc.light_dist = length(L);
+	lc.L = L/lc.light_dist;
+}
+
+void computeN(inout LightStruct lc){
+	vec3 V = normalize(u_camera_position - lc.world_position);
+	vec3 normal_pixel = texture2D( u_normal_texture, v_uv ).xyz; 
+	vec3 v_N = normalize(v_normal);
+	// if there is a normal texture, compute the normal according to it
+	if (u_normal_text_bool == 1)
+		lc.N = perturbNormal(v_N, V, v_uv, normal_pixel);
+	else
+		lc.N = v_N;
+}
+
+void computeNdotL(inout LightStruct lc){
+	lc.NdotL = clamp(dot(lc.L,lc.N), 0.0, 1.0);
+}
+
+void computeSpotFactor(inout LightStruct lc){
+	lc.D = normalize(u_light_direction);
+	lc.LdotD = dot(-lc.L, lc.D);
+	// check if point inside the spotlight
+	if (lc.LdotD >= u_light_cone_cos){
+		// compute how much it is inside
+		lc.spot_factor = pow(lc.LdotD, u_light_cone_exp);	
+	}
+	else{
+		lc.spot_factor = 0.0;
+	}	
+}
+
+void computeAttenuation(inout LightStruct lc){
+	float att_factor = u_light_max_distance - lc.light_dist;
+	att_factor /= u_light_max_distance;
+	att_factor = max(att_factor, 0.0);
+	// apply quadratic attenuation
+	lc.att_factor = pow(att_factor,2);
+}
+
+void testShadowMap(inout LightStruct lc){
+	//project our 3D position to the shadowmap
+	vec4 proj_pos = u_light_shadowmap_vpm * vec4(lc.world_position, 1.0);
+	
+	//from homogeneus space to clip space
+	vec2 shadow_uv = proj_pos.xy / proj_pos.w;
+	
+	//from clip space to uv space
+	shadow_uv = shadow_uv * 0.5 + vec2(0.5);
+
+	//get point depth [-1 .. +1] in non-linear space
+	float real_depth = (proj_pos.z - u_light_shadow_bias) / proj_pos.w;
+	
+	//normalize from [-1..+1] to [0..+1] still non-linear
+	real_depth = real_depth * 0.5 + 0.5;
+	
+	//read depth from depth buffer in [0..+1] non-linear
+	vec4 scale_factor = u_map_piece;
+	vec2 sh_uv = vec2(shadow_uv.x*scale_factor[0] + scale_factor[2], shadow_uv.y*scale_factor[1] + scale_factor[3]);
+	float shadow_depth = texture( u_light_shadowmap, sh_uv).x;
+	
+	//compute final shadow factor by comparing
+	lc.shadow_factor = 1.0;
+	
+	//we can compare them, even if they are not linear
+	if( shadow_depth < real_depth )
+		lc.shadow_factor = 0.0;
+		
+	//We must see if it is outside the sides
+	if( shadow_uv.x < 0.0 || shadow_uv.x > 1.0 ||shadow_uv.y < 0.0 || shadow_uv.y > 1.0 )
+		lc.shadow_factor = 1.0;
+
+	//it is before near or behind far plane
+	if(real_depth < 0.0 || real_depth > 1.0)
+		lc.shadow_factor = 1.0;
+
+}
+
+\light_functions_single
+
+// Save computations related to light
+struct LightStruct{
+	vec3 L;
+	vec3 D;
+	vec3 N;
+
+	float NdotL;
+	float LdotD;
+	float light_dist;
+
+	float spot_factor;
+	float att_factor;
+	float shadow_factor;
+}LightComp;
+
+// L vector for point and spot lights
+void computeL_point(inout LightStruct lc, int i){
+	// Distance from current point to light
+	vec3 L = u_lights_position[i] - v_world_position;
+	// Modulus			
+	lc.light_dist = length(L);
+	// Normalize L
+	lc.L = L/lc.light_dist;
+}
+
+// L vector for directional light
+void computeL_directional(inout LightStruct lc, int i){
+	// All points take the same light direction
+	vec3 L = u_lights_direction[i];
+	lc.light_dist = length(L);
+	lc.L = L/lc.light_dist;
+}
+
+void computeNdotL(inout LightStruct lc){
+	vec3 V = normalize(u_camera_position - v_world_position);
+	vec3 normal_pixel = texture2D( u_normal_texture, v_uv ).xyz; 
+	vec3 N = normalize(v_normal);
+	// if there is a normal texture, compute the normal according to it
+	if (u_normal_text_bool == 1)
+		lc.N = perturbNormal(N, V, v_uv, normal_pixel);
+	else
+		lc.N = N;
+	lc.NdotL = clamp(dot(lc.L,lc.N), 0.0, 1.0);
+}
+
+void computeSpotFactor(inout LightStruct lc, int i){
+	lc.D = normalize(u_lights_direction[i]);
+	lc.LdotD = dot(-lc.L, lc.D);
+	// check if point inside the spotlight
+	if (lc.LdotD >= u_lights_cone_cos[i]){
+		// compute how much it is inside
+		lc.spot_factor = pow(lc.LdotD, u_lights_cone_exp[i]);	
+	}
+	else{
+		lc.spot_factor = 0.0;
+	}	
+}
+
+void computeAttenuation(inout LightStruct lc, int i){
+	float att_factor = u_lights_max_distance[i] - lc.light_dist;
+	att_factor /= u_lights_max_distance[i];
+	att_factor = max(att_factor, 0.0);
+	// apply quadratic attenuation
+	lc.att_factor = pow(att_factor,2);
+}
+
+// Assign each light to their corresponding space in the shadowmap atlas
+vec4 assignMapPiece(int index){
+	int num_cols = int(ceil(sqrt(u_num_lights_shadow)));
+	int num_rows;
+
+	if (u_num_lights_shadow <= num_cols * (num_cols - 1))
+		num_rows = num_cols - 1;
+	else
+		num_rows = num_cols;
+
+	float min_cols_rows = (num_cols < num_rows) ? num_cols : num_rows;
+	float size = 1 / min_cols_rows;
+
+	int i_col = index % num_cols;
+	int i_row = index / num_cols;
+
+	return vec4(size, size, i_col * size, i_row * size);
+}
+
+void testShadowMap(inout LightStruct lc, int i, int sh_i){
+	//project our 3D position to the shadowmap
+	vec4 proj_pos = u_lights_shadowmap_vpm[sh_i] * vec4(v_world_position,1.0);
+	
+	//from homogeneus space to clip space
+	vec2 shadow_uv = proj_pos.xy / proj_pos.w;
+	
+	//from clip space to uv space
+	shadow_uv = shadow_uv * 0.5 + vec2(0.5);
+
+	//get point depth [-1 .. +1] in non-linear space
+	float real_depth = (proj_pos.z - u_lights_shadow_bias[i]) / proj_pos.w;
+	
+	//normalize from [-1..+1] to [0..+1] still non-linear
+	real_depth = real_depth * 0.5 + 0.5;
+	
+	//read depth from depth buffer in [0..+1] non-linear
+	vec4 scale_factor = assignMapPiece(sh_i);
+	vec2 sh_uv = vec2(shadow_uv.x*scale_factor[0] + scale_factor[2], shadow_uv.y*scale_factor[1] + scale_factor[3]);
+	float shadow_depth = texture( u_lights_shadowmap, sh_uv).x;
+	
+	//compute final shadow factor by comparing
+	lc.shadow_factor = 1.0;
+	
+	//we can compare them, even if they are not linear
+	if( shadow_depth < real_depth )
+		lc.shadow_factor = 0.0;
+		
+	//We must see if it is outside the sides
+	if( shadow_uv.x < 0.0 || shadow_uv.x > 1.0 ||shadow_uv.y < 0.0 || shadow_uv.y > 1.0 )
+		lc.shadow_factor = 1.0;
+
+	//it is before near or behind far plane
+	if(real_depth < 0.0 || real_depth > 1.0)
+		lc.shadow_factor = 1.0;
+}
+
+\pbr_functions
+
+// Normal Distribution Function using GGX Distribution
+float D_GGX (const in float NoH, const in float linearRoughness )
+{
+	float a2 = linearRoughness * linearRoughness;
+	float f = (NoH * NoH) * (a2 - 1.0) + 1.0;
+	return a2 / (PI * f * f);
+}
+
+// Fresnel term with colorized fresnel
+vec3 F_Schlick( const in float VoH, const in vec3 f0)
+{ 
+	float f = pow(1.0 - VoH, 5.0);
+	return f0 + (vec3(1.0) - f0) * f;
+}
+
+// Geometry Term: Geometry masking/shadowing due to microfacets
+float GGX(float NdotV, float k){
+	return NdotV / (NdotV * (1.0 - k) + k);
+}
+	
+float G_Smith( float NdotV, float NdotL, float roughness)
+{
+	float k = pow(roughness + 1.0, 2.0) / 8.0;
+	return GGX(NdotL, k) * GGX(NdotV, k);
+}
+
+// Diffuse Reflections: Disney BRDF using retro-reflections using F term, this is much more complex!!
+vec3 Fd_Burley ( const in float NoV, const in float NoL, const in float LoH, const in float linearRoughness)
+{
+        vec3 f90 = 0.5 + 2.0 * vec3(linearRoughness) * LoH * LoH;
+
+        vec3 lightScatter = F_Schlick(NoL, f90);
+        vec3 viewScatter  = F_Schlick(NoV, f90);
+        return lightScatter * viewScatter * RECIPROCAL_PI;
+}
+
+//this is the cook torrance specular reflection model
+vec3 specularBRDF( float roughness, vec3 f0, float NoH, float NoV, float NoL, float LoH )
+{
+	float a = roughness * roughness;
+
+	// Normal Distribution Function
+	float D = D_GGX( NoH, a );
+
+	// Fresnel Function
+	vec3 F = F_Schlick( LoH, f0 );
+
+	// Visibility Function (shadowing/masking)
+	float G = G_Smith( NoV, NoL, roughness );
+		
+	// Norm factor
+	vec3 spec = D * G * F;
+	spec /= (4.0 * NoL * NoV + 1e-6);
+
+	return spec;
+}
+
+\ssao_functions
+vec3 rotateY( float angle, vec3 delta )
+{
+	float s0 = sin(angle);
+	float c0 = cos(angle);
+	return vec3( delta.x * c0 - delta.z * s0, delta.y, delta.x * s0 + delta.z * c0  );
+}
+
+mat3 cotangent_frame(vec3 N, vec3 p, vec2 uv)
+{
+	// get edge vectors of the pixel triangle
+	vec3 dp1 = dFdx( p );
+	vec3 dp2 = dFdy( p );
+	vec2 duv1 = dFdx( uv );
+	vec2 duv2 = dFdy( uv );
+	// solve the linear system
+	vec3 dp2perp = cross( dp2, N );
+	vec3 dp1perp = cross( N, dp1 );
+	vec3 T = dp2perp * duv1.x + dp1perp * duv2.x;
+	vec3 B = dp2perp * duv1.y + dp1perp * duv2.y;
+	// construct a scale-invariant frame 
+	float invmax = inversesqrt( max( dot(T,T), dot(B,B) ) );
+	return mat3( T * invmax, B * invmax, N );
+}
+
+
+// ------------------------------ SHADERS --------------------------------
+\basic.vs
+
+#version 330 core
+
+in vec3 a_vertex;
+in vec3 a_normal;
+in vec2 a_coord;
+in vec4 a_color;
+
+uniform vec3 u_camera_pos;
+
+uniform mat4 u_model;
+uniform mat4 u_viewprojection;
+
+//this will store the color for the pixel shader
+out vec3 v_position;
+out vec3 v_world_position;
+out vec3 v_normal;
+out vec2 v_uv;
+out vec4 v_color;
+
+uniform float u_time;
+
+void main()
+{	
+	//calcule the normal in camera space (the NormalMatrix is like ViewMatrix but without traslation)
+	v_normal = (u_model * vec4( a_normal, 0.0) ).xyz;
+	
+	//calcule the vertex in object space
+	v_position = a_vertex;
+	v_world_position = (u_model * vec4( v_position, 1.0) ).xyz;
+	
+	//store the color in the varying var to use it from the pixel shader
+	v_color = a_color;
+
+	//store the texture coordinates
+	v_uv = a_coord;
+
+	//calcule the position of the vertex using the matrices
+	gl_Position = u_viewprojection * vec4( v_world_position, 1.0 );
+}
+//--------------------------------- Quad ----------------------------------
+\quad.vs
+
+#version 330 core
+
+in vec3 a_vertex;
+in vec2 a_coord;
+out vec2 v_uv;
+
+void main()
+{	
+	v_uv = a_coord;
+	gl_Position = vec4( a_vertex, 1.0 );
+}
+
+//---------------------------------- Flat --------------------------------
+\flat.fs
+
+#version 330 core
+
+uniform vec4 u_color;
+
+out vec4 FragColor;
+
+void main()
+{
+	FragColor = u_color;
+}
+
+//--------------------------------- Texture -------------------------------
+\texture.fs
+
+#version 330 core
+
+in vec3 v_position;
+in vec3 v_world_position;
+in vec3 v_normal;
+in vec2 v_uv;
+in vec4 v_color;
+
+uniform vec4 u_color;
+uniform sampler2D u_texture;
+uniform float u_time;
+uniform float u_alpha_cutoff;
+
+out vec4 FragColor;
+
+void main()
+{
+	vec2 uv = v_uv;
+	vec4 color = u_color;
+	color *= texture( u_texture, v_uv );
+
+	if(color.a < u_alpha_cutoff)
+		discard;
+
+	FragColor = color;
+}
+
+//------------------------------------ Singlepass ----------------------------
+\light_single_pass.fs
+#version 330 core
+
+in vec3 v_position;
+in vec3 v_world_position;
+in vec3 v_normal;
+in vec2 v_uv;
+in vec4 v_color;
+
+uniform vec4 u_color;
+uniform float u_time;
+uniform float u_alpha_cutoff;
+uniform vec3 u_camera_position;
+
+// Color correction
+uniform int u_gamma;
+
+//Textures
+uniform int u_texture2show;
+uniform int u_normal_text_bool;
+uniform sampler2D u_normal_texture;
+
+// Light parameters
+uniform vec3 u_ambient_light;
+
+#define MAX_LIGHTS 10
+uniform int u_lights_type[MAX_LIGHTS];
+uniform vec3 u_lights_position[MAX_LIGHTS];
+uniform vec3 u_lights_color[MAX_LIGHTS];
+uniform float u_lights_max_distance[MAX_LIGHTS];
+uniform vec3 u_lights_direction[MAX_LIGHTS];
+uniform float u_lights_cone_cos[MAX_LIGHTS];
+uniform float u_lights_cone_exp[MAX_LIGHTS];
+
+uniform int u_num_lights_shadow;
+uniform int u_lights_cast_shadows[MAX_LIGHTS];
+uniform sampler2D u_lights_shadowmap;
+uniform mat4 u_lights_shadowmap_vpm[MAX_LIGHTS];
+uniform float u_lights_shadow_bias[MAX_LIGHTS];
+
+out vec4 FragColor;
+
+#include texture_uniforms
+#include normalmap_functions
+#include degamma
+#include light_functions_single
+
+void main()
+{
+	vec2 uv = v_uv;
+	vec4 color = u_color;
+	color *= texture( u_texture, v_uv );
+
+	if(color.a < u_alpha_cutoff)
+		discard;
+
+	// Emissive
+	vec3 emissive = texture( u_emissive_texture, v_uv ).xyz;
+	vec3 light = vec3(u_ambient_light);
+	if (u_gamma == 1)
+		color.xyz = degamma(color.xyz);
+		light = degamma(light);
+		emissive = degamma(emissive);
+
+	// index to store the number of lights casting shadows
+	int l_shadow_i = 0;
+	// Iterate lights
+	for (int i = 0; i < MAX_LIGHTS; i++) {
+		LightComp = LightStruct(
+			vec3(0.0, 0.0, 0.0), //L
+			vec3(0.0, 0.0, 0.0), //D
+			vec3(0.0, 0.0, 0.0), //N
+
+			0.0, // NdotL
+			0.0, // LdotD
+			0.0, // light dist
+
+			1.0, // spot factor
+			1.0, // attenuation factor
+			1.0 // shadow_factor
+		);
+
+		vec3 linear_light_color = u_lights_color[i];
+
+		if (u_gamma == 1)
+			linear_light_color = degamma(u_lights_color[i]);
+			
+		// Point
+		if (u_lights_type[i] == 1){
+			computeL_point(LightComp, i);
+		}
+
+		// Spot
+		else if (u_lights_type[i] == 2){
+			computeL_point(LightComp, i);
+			computeSpotFactor(LightComp, i);
+		}
+
+		// Directional
+		else if (u_lights_type[i] == 3){
+			computeL_directional(LightComp, i);
+		}
+
+		// didn't make it to pass multiple textures to the shader so shadowmaps are not working for singlepass
+		if (u_lights_cast_shadows[i] == 1){
+			testShadowMap(LightComp, i, l_shadow_i);
+			l_shadow_i += 1;
+		}
+
+		computeNdotL(LightComp);
+		computeAttenuation(LightComp, i);
+		light += linear_light_color * LightComp.NdotL * LightComp.att_factor * LightComp.spot_factor  * LightComp.shadow_factor;
+	}
+
+	// Apply other textures
+	//Emissive
+	light += emissive;
+
+	// Occlusion can be either in the met_rou or occlusion texture
+	light *= texture( u_occlusion_texture, v_uv ).x;
+	
+	// Occlusion
+	// x coord has occlusion map
+	light *= texture( u_met_rough_texture, v_uv ).x;
+
+	color.xyz *= light;
+
+	if (u_gamma == 1)
+		color.xyz = gamma(color.xyz);
+
+	// Debug textures
+	// Normal
+	if (u_texture2show == 1){
+		color.xyz = LightComp.N;
+	}
+
+	// Occlusion
+	if(u_texture2show == 2){
+		color.xyz = vec3(texture( u_met_rough_texture, v_uv ).x);
+		color.xyz *= texture(u_occlusion_texture, v_uv).x;
+	}
+	// Emissive
+	if(u_texture2show == 3)
+		color.xyz = texture(u_emissive_texture, v_uv).xyz;
+
+	FragColor = color;
+
+}
+
+//----------------------------------- Multipass -----------------------------
+\light_multi_pass.fs
+#version 330 core
+
+in vec3 v_position;
+in vec3 v_world_position;
+in vec2 v_uv;
+in vec4 v_color;
+
+uniform int u_light_is_first;
+
+uniform vec3 u_camera_position;
+uniform vec4 u_color;
+uniform float u_time;
+uniform float u_alpha_cutoff;
+
+// Color correction
+uniform int u_gamma;
+
+//Textures
+uniform int u_texture2show;
+
+out vec4 FragColor;
+
+#include texture_uniforms
+#include light_uniforms
+#include normalmap_functions
+#include degamma
+#include light_functions_multi
+
+void main()
+{
+	LightComp = LightStruct(
+		vec3(0.0, 0.0, 0.0), //L
+		vec3(0.0, 0.0, 0.0), //D
+		vec3(0.0, 0.0, 0.0), //N
+		vec3(0.0, 0.0, 0.0), //V
+		vec3(0.0, 0.0, 0.0), //R
+		vec3(0.0, 0.0, 0.0), //H
+
+		vec3(0.0, 0.0, 0.0), //world_position
+
+		0.0, // NdotL
+		0.0, // LdotD
+		0.0, // NdotH
+		0.0, // NdotV
+		0.0, // LdotH
+
+		0.0, // light dist
+
+		1.0, // spot factor
+		1.0, // attenuation factor
+		1.0 // shadow_factor
+	);
+
+	LightComp.world_position = v_world_position;
+
+	vec2 uv = v_uv;
+	vec4 color = u_color;
+	vec4 texture_color = texture( u_texture, v_uv );
+
+	vec3 light = u_ambient_light;
+	vec3 light_color = u_light_color;
+
+	// Emissive
+	vec3 emissive = texture( u_emissive_texture, v_uv ).xyz;
+
+	if (u_gamma == 1){
+		color.xyz = degamma(u_color.xyz);
+		texture_color.xyz = degamma(texture_color.xyz);
+		light = degamma(vec3(light));
+		light_color = degamma(light_color);
+		emissive = degamma(emissive);
+	}
+
+	color *= texture_color;
+
+	if(color.a < u_alpha_cutoff)
+		discard;
+
+	// Point
+	if (u_light_type == 1){
+		computeL_point(LightComp);
+	}
+
+	// Spot
+	else if (u_light_type == 2){
+		computeL_point(LightComp);
+		computeSpotFactor(LightComp);
+	}
+
+	// Directional
+	else if (u_light_type == 3){
+		computeL_directional(LightComp);
+	}
+
+	computeN(LightComp);
+
+	computeNdotL(LightComp);
+
+	if (u_light_cast_shadows == 1){
+		testShadowMap(LightComp);
+	}
+
+	computeAttenuation(LightComp);
+	light += light_color * LightComp.NdotL * LightComp.att_factor * LightComp.spot_factor * LightComp.shadow_factor;
+
+	// Apply other textures
+	light += emissive;
+
+	// Occlusion
+	// x coord has occlusion map
+	light *= texture( u_met_rough_texture, v_uv ).x;
+	// Occlusion can be either in the met_rou or occlusion texture
+	light *= texture( u_occlusion_texture, v_uv ).x;
+
+	color.xyz *= light;
+
+	// Debug textures
+	// Normal
+	if (u_texture2show == 1){
+		color.xyz = LightComp.N;
+	}
+
+	// Occlusion
+	if(u_texture2show == 2){
+		color.xyz = vec3(texture( u_met_rough_texture, v_uv ).x);
+		color.xyz *= texture(u_occlusion_texture, v_uv).x;
+	}
+	// Emissive
+	if(u_texture2show == 3)
+		color.xyz = texture(u_emissive_texture, v_uv).xyz;
+	
+	// seteamos el alpha a 0 a partir de la segunda iteración para que no se aplique gamma correction
+	if (u_light_is_first == 0)
+		color.a = 0.0;
+		
+	FragColor = color;
+}
+
+// ----------------------------------- GBuffers -----------------------------
+\gbuffers.fs
+
+#version 330 core
+
+in vec3 v_position;
+in vec3 v_world_position;
+in vec3 v_normal;
+in vec2 v_uv;
+in vec4 v_color;
+
+uniform vec3 u_camera_position;
+uniform vec4 u_color;
+uniform float u_time;
+uniform float u_alpha_cutoff;
+
+// Textures
+uniform int u_normal_text_bool;
+uniform sampler2D u_normal_texture;
+
+// gbuffers out
+layout(location = 0) out vec4 GB0;
+layout(location = 1) out vec4 GB1;
+layout(location = 2) out vec4 GB2;
+
+#include texture_uniforms
+#include normalmap_functions
+
+void main()
+{
+	vec2 uv = v_uv;
+	vec4 color = u_color;
+	color *= texture( u_texture, v_uv );
+
+	if(color.a < u_alpha_cutoff)
+		discard;
+
+	vec3 N;
+	vec3 V = normalize(u_camera_position - v_world_position);
+	vec3 normal_pixel = texture2D( u_normal_texture, v_uv ).xyz; 
+	vec3 v_N = normalize(v_normal);
+	// if there is a normal texture, compute the normal according to it
+	if (u_normal_text_bool == 1)
+		N = perturbNormal(v_N, V, v_uv, normal_pixel);
+	else
+		N = v_N;
+
+	// Apply other textures
+	// Emissive
+	vec3 emissive = texture( u_emissive_texture, v_uv ).xyz;
+
+	// Occlusion
+	// x coord has occlusion map
+	float occlusion_factor = texture( u_met_rough_texture, v_uv ).x;
+	// Occlusion can be either in the met_rou or occlusion texture
+	occlusion_factor *= texture( u_occlusion_texture, v_uv ).x;
+
+	// Metalness
+	float metal_factor = texture(u_met_rough_texture, v_uv).y;
+	// Roughness
+	float roughness_factor = texture(u_met_rough_texture, v_uv).z;
+
+	// don't need to save the alpha
+	GB0 = vec4(color.xyz, metal_factor);
+	// to recover negative values
+	GB1 = vec4(N * 0.5 + vec3(0.5), roughness_factor);
+	GB2 = vec4(emissive, occlusion_factor);
+
+}
+
+//------------------------------- Deferred Ambient ---------------------------
+\deferred_ambient.fs
+// cuando no hay luces se llama a este shader
+
+#version 330 core
+
+in vec2 v_uv;
+
+uniform vec3 u_camera_position;
+uniform vec4 u_color;
+uniform float u_time;
+uniform float u_alpha_cutoff;
+
+uniform mat4 u_model;
+uniform mat4 u_viewprojection;
+
+uniform mat4 u_inverse_viewprojection;
+uniform vec2 u_iRes;
+
+// Light parameters
+uniform vec3 u_ambient_light;
+
+// Color correction
+uniform int u_gamma;
+
+out vec4 FragColor;
+
+#include gbuffer_texture_uniforms
+#include degamma
+
+
+void main()
+{	
+	vec2 uv = v_uv;
+
+	vec4 gb0_color = texture(u_gb0_texture, uv);
+	//vec4 gb1_color = texture(u_gb1_texture, uv);
+	vec4 gb2_color = texture(u_gb2_texture, uv);
+
+	vec4 color = vec4(gb0_color.xyz, 1.0);
+	vec3 ambient_light = u_ambient_light;
+
+	// Emissive
+	vec3 emissive = gb2_color.xyz;
+
+	if (u_gamma == 1){
+		color.xyz = degamma(color.xyz);
+		ambient_light = degamma(ambient_light);
+		emissive = degamma(emissive);
+	}
+
+	float ao_factor = texture(u_ssao_texture, uv).x;
+
+	vec3 light = ambient_light * ao_factor;
+	light += emissive;
+
+	// Apply other textures
+	// Occlusion (Occlusion value is only in one coordinate)
+	light *= gb0_color.w;
+
+	color.xyz *= light;
+
+	FragColor = color;
+}
+
+//-------------------------------- Deferred ---------------------------------
+\deferred.fs
+#version 330 core
+
+in vec2 v_uv;
+
+uniform vec3 u_camera_position;
+uniform vec4 u_color;
+uniform float u_time;
+uniform float u_alpha_cutoff;
+
+uniform vec2 u_camera_nearfar;
+
+uniform mat4 u_model;
+uniform mat4 u_viewprojection;
+
+//uniform int u_normal_text_bool;
+//uniform int u_texture2show;
+
+uniform mat4 u_inverse_viewprojection;
+uniform vec2 u_iRes;
+
+// Color correction
+uniform int u_gamma;
+
+out vec4 FragColor;
+
+#include gbuffer_texture_uniforms
+#include light_uniforms 
+#include normalmap_functions
+#include degamma
+#include light_functions_multi
+
+void main()
+{
+	LightComp = LightStruct(
+		vec3(0.0, 0.0, 0.0), //L
+		vec3(0.0, 0.0, 0.0), //D
+		vec3(0.0, 0.0, 0.0), //N
+		vec3(0.0, 0.0, 0.0), //V
+		vec3(0.0, 0.0, 0.0), //R
+		vec3(0.0, 0.0, 0.0), //H
+
+		vec3(0.0, 0.0, 0.0), //World pos
+
+		0.0, // NdotL
+		0.0, // LdotD
+		0.0, // NdotH
+		0.0, // NdotV
+		0.0, // LdotH
+
+		0.0, // light dist
+
+		1.0, // spot factor
+		1.0, // attenuation factor
+		1.0 // shadow_factor
+	);
+	
+	vec2 uv = gl_FragCoord.xy * u_iRes.xy;
+
+	vec4 gb0_color = texture(u_gb0_texture, uv); // Color + metalness
+	vec4 gb1_color = texture(u_gb1_texture, uv); // Normal + roughness
+	vec4 gb2_color = texture(u_gb2_texture, uv); // Emissive + occlusion
+	float depth = texture( u_depth_texture, uv ).x;
+
+	vec4 screen_pos = vec4(uv.x*2.0-1.0, uv.y*2.0-1.0, depth*2.0-1.0, 1.0);
+	vec4 proj_worldpos = u_inverse_viewprojection * screen_pos;
+	LightComp.world_position = proj_worldpos.xyz / proj_worldpos.w;
+
+	LightComp.N = normalize(gb1_color.xyz * 2.0 - vec3(1.0)); // PASAMOS DE [0, 1] A [-1, 1]
+
+	vec4 color = vec4(gb0_color.xyz, 1.0);
+	float ao_factor = texture(u_ssao_texture, uv).x;
+
+	vec3 light = u_ambient_light;
+
+	vec3 light_color = u_light_color;
+	if (u_gamma == 1){
+		color.xyz = degamma(color.xyz);
+		light = degamma(light);
+		light_color = degamma(light_color);
+		gb2_color.xyz = degamma(gb2_color.xyz);
+	}
+
+	light *= ao_factor;
+
+	// Point
+	if (u_light_type == 1){
+		computeL_point(LightComp);
+	}
+
+	// Spot
+	else if (u_light_type == 2){
+		computeL_point(LightComp);
+		computeSpotFactor(LightComp);
+	}
+
+	// Directional
+	else if (u_light_type == 3){
+		computeL_directional(LightComp);
+	}
+
+	computeNdotL(LightComp);
+
+	if (u_light_cast_shadows == 1){
+		testShadowMap(LightComp);
+	}
+
+	computeAttenuation(LightComp);
+	light += light_color * LightComp.NdotL * LightComp.att_factor * LightComp.spot_factor * LightComp.shadow_factor;
+
+	// Apply other textures
+	// Emissive
+	light += gb2_color.xyz;
+
+	// Occlusion
+	// Occlusion value is only in one coordinate
+	light *= gb0_color.w;
+
+	color.xyz *= light;
+
+	FragColor = color;
+}
+
+//------------------------------ Color Correction ---------------------------
+\col_corr.fs
+#version 330 core
+in vec2 v_uv;
+in vec4 v_color;
+
+uniform int u_gamma;
+uniform int u_tonemapping;
+//uniform sampler2D u_gb0_texture;
+uniform sampler2D u_screen_texture;
+uniform sampler2D u_depth_texture;
+uniform float u_lumwhite2;
+uniform float u_average_lum;
+uniform float u_scale;
+
+out vec4 FragColor;
+
+
+vec3 gamma(vec3 c)
+{
+	return pow(c,vec3(1.0/2.2));
+}
+
+void main(){
+	vec4 color = texture(u_screen_texture, v_uv);
+	vec3 rgb = color.xyz;
+	float depth = texture(u_depth_texture, v_uv).x;
+	// discard background pixels to avoid artifacts
+	if (depth == 1.0){
+		discard;
+	}
+
+	if (u_tonemapping == 1){
+		float lum = dot(rgb, vec3(0.2126, 0.7152, 0.0722));
+		float L = (u_scale * u_average_lum) * lum;
+		float Ld = (L * (1.0 + L * u_lumwhite2)) / (1.0 + L);
+		rgb = (rgb / lum) * Ld;
+		rgb = max(rgb,vec3(0.001));
+	}
+
+	// Aplicamos gamma solo a los objetos sin transparencia (sobretodo para los vidrios) dejando un pequeño
+	// margen de 0.1 ya que el chasis del coche por ejemplo tiene un poco de transparencia pero queremos aplicarle gamma
+	if (u_gamma == 1 && color.w >= 0.9)
+		rgb = gamma(rgb);
+	
+	FragColor = vec4( rgb, color.a );
+}
+
+
+//----------------------------- PBR Multipass -------------------------------
+\pbr_multi.fs
+#version 330 core
+
+#define PI 3.14159265358979323846
+#define RECIPROCAL_PI 0.3183098861837697
+
+in vec3 v_position;
+in vec3 v_world_position;
+in vec2 v_uv;
+in vec4 v_color;
+
+uniform int u_light_is_first;
+
+uniform vec3 u_camera_position;
+uniform vec4 u_color;
+uniform float u_time;
+uniform float u_alpha_cutoff;
+
+// Color correction
+uniform int u_gamma;
+
+uniform int u_texture2show;
+
+uniform mat4 u_inverse_viewprojection;
+uniform vec2 u_iRes;
+
+out vec4 FragColor;
+
+#include texture_uniforms
+#include light_uniforms
+#include normalmap_functions
+#include light_functions_multi
+#include degamma
+#include pbr_functions
+
+void main()
+{
+	LightComp = LightStruct(
+		vec3(0.0, 0.0, 0.0), //L
+		vec3(0.0, 0.0, 0.0), //D
+		vec3(0.0, 0.0, 0.0), //N
+		vec3(0.0, 0.0, 0.0), //V
+		vec3(0.0, 0.0, 0.0), //R
+		vec3(0.0, 0.0, 0.0), //H
+
+		vec3(0.0, 0.0, 0.0), //World pos
+
+		0.0, // NdotL
+		0.0, // LdotD
+		0.0, // NdotH
+		0.0, // NdotV
+		0.0, // LdotH
+
+		0.0, // light dist
+
+		1.0, // spot factor
+		1.0, // attenuation factor
+		1.0 // shadow_factor
+	);
+
+	vec2 uv = v_uv;
+
+	vec4 color = u_color;
+	vec4 color_texture = texture(u_texture, uv);
+	vec4 emissive = texture(u_emissive_texture, uv);
+	vec4 met_rough = texture(u_met_rough_texture, uv);
+	float occlusion = texture(u_occlusion_texture, uv).x;
+
+	LightComp.world_position = v_world_position;
+	
+	if (color.a < u_alpha_cutoff)
+		discard;
+
+	computeN(LightComp);
+
+	float metalness = met_rough.y * u_metallic_factor;
+	float roughness = met_rough.z * u_roughness_factor;
+
+	vec3 light = vec3(0.0);
+	vec3 ambient_light = vec3(u_ambient_light);
+
+	vec3 light_color = u_light_color;
+
+	if (u_gamma == 1){
+		color.xyz = degamma(color.xyz);
+		color_texture.xyz = degamma(color_texture.xyz);
+		ambient_light = degamma(ambient_light);
+		light_color = degamma(light_color);
+		emissive.xyz = degamma(emissive.xyz);
+	}
+
+	color *= color_texture;
+	// Point
+	if (u_light_type == 1){
+		computeL_point(LightComp);
+	}
+
+	// Spot
+	else if (u_light_type == 2){
+		computeL_point(LightComp);
+		computeSpotFactor(LightComp);
+	}
+
+	// Directional
+	else if (u_light_type == 3){
+		computeL_directional(LightComp);
+	}
+
+	computeNdotL(LightComp);
+
+	//we compute the reflection in base to the color and the metalness
+	vec3 f0 = mix( vec3(0.5), color.xyz, metalness);
+
+	//metallic materials do not have diffuse
+	vec3 diffuseColor = (1.0 - metalness) * color.xyz;
+
+	// METER EN UNA FUNCION
+	LightComp.V = normalize(u_camera_position - LightComp.world_position);
+	LightComp.H = normalize(LightComp.V + LightComp.L);
+
+	LightComp.NdotH = clamp(dot(LightComp.N, LightComp.H), 0.0, 1.0);
+	LightComp.NdotV = clamp(dot(LightComp.N, LightComp.V), 0.0, 1.0);
+	LightComp.LdotH = clamp(dot(LightComp.L, LightComp.H), 0.0, 1.0);
+
+	//compute the specular
+	vec3 Fr_d = specularBRDF( roughness, f0, LightComp.NdotH, LightComp.NdotV, LightComp.NdotL, LightComp.LdotH);
+
+	// Here we use the Burley, but you can replace it by the Lambert.
+	float linearRoughness = pow(roughness, 2.0);
+	vec3 Fd_d = diffuseColor * Fd_Burley(LightComp.NdotV,LightComp.NdotL,LightComp.LdotH,linearRoughness); 
+
+	//add diffuse and specular reflection
+	vec3 direct = Fr_d + Fd_d;
+
+	if (u_light_cast_shadows == 1){
+		testShadowMap(LightComp);
+	}
+
+	computeAttenuation(LightComp);
+
+	//compute how much light received the pixel
+	vec3 lightParams = light_color * LightComp.att_factor * LightComp.spot_factor * LightComp.shadow_factor;
+	//modulate direct light by light received
+	light += lightParams * direct;
+	light += color_texture.xyz * ambient_light;
+
+
+	// Occlusion
+	light *= occlusion;
+	light *= met_rough.x;
+
+	// Apply other textures
+	// Emissive
+	light += emissive.xyz + u_emissive_factor;
+
+	// Debug textures
+	// Normal
+	if (u_texture2show == 1){
+		light = LightComp.N;
+	}
+
+	// Occlusion
+	if(u_texture2show == 2){
+		light = vec3(texture( u_met_rough_texture, v_uv ).x);
+		light *= texture(u_occlusion_texture, v_uv).x;
+	}
+	// Emissive
+	if(u_texture2show == 3)
+		light = texture(u_emissive_texture, v_uv).xyz;
+
+	if (u_light_is_first == 0)
+		color.a = 0.0;
+
+	FragColor = vec4(light,color.w);
+}
+
+//-----------------------------PBR Deferred -------------------------------
+\deferred_pbr.fs
+#version 330 core
+
+#define PI 3.14159265358979323846
+#define RECIPROCAL_PI 0.3183098861837697
+
+in vec2 v_uv;
+
+uniform vec3 u_camera_position;
+uniform vec4 u_color;
+uniform float u_time;
+uniform float u_alpha_cutoff;
+
+uniform int u_texture2show;
+
+uniform mat4 u_inverse_viewprojection;
+uniform vec2 u_iRes;
+
+// Color correction
+uniform int u_gamma;
+
+out vec4 FragColor;
+
+#include gbuffer_texture_uniforms
+#include light_uniforms
+#include normalmap_functions
+#include light_functions_multi
+#include degamma
+#include pbr_functions
+
+void main()
+{
+	LightComp = LightStruct(
+		vec3(0.0, 0.0, 0.0), //L
+		vec3(0.0, 0.0, 0.0), //D
+		vec3(0.0, 0.0, 0.0), //N
+		vec3(0.0, 0.0, 0.0), //V
+		vec3(0.0, 0.0, 0.0), //R
+		vec3(0.0, 0.0, 0.0), //H
+
+		vec3(0.0, 0.0, 0.0), //World pos
+
+		0.0, // NdotL
+		0.0, // LdotD
+		0.0, // NdotH
+		0.0, // NdotV
+		0.0, // LdotH
+
+		0.0, // light dist
+
+		1.0, // spot factor
+		1.0, // attenuation factor
+		1.0 // shadow_factor
+	);
+
+	vec2 uv = gl_FragCoord.xy * u_iRes.xy;
+
+	vec4 gb0_color = texture(u_gb0_texture, uv);
+	vec4 gb1_color = texture(u_gb1_texture, uv);
+	vec4 gb2_color = texture(u_gb2_texture, uv);  
+	float ao_factor = texture(u_ssao_texture, uv).x;
+
+	float depth = texture( u_depth_texture, uv ).x;
+	vec4 screen_pos = vec4(uv.x*2.0-1.0, uv.y*2.0-1.0, depth*2.0-1.0, 1.0);
+	vec4 proj_worldpos = u_inverse_viewprojection * screen_pos;
+	LightComp.world_position = proj_worldpos.xyz / proj_worldpos.w;
+
+	LightComp.N = normalize(gb1_color.xyz * 2.0 - vec3(1.0)); // PASAMOS DE [0, 1] A [-1, 1]
+
+	vec4 color = vec4(gb0_color.xyz, 1.0);
+
+	float metalness = gb0_color.w;
+	float roughness = gb1_color.w;
+
+	vec3 ambient_light = u_ambient_light;
+	vec3 light_color = u_light_color;
+	vec3 light = vec3(0.0);
+
+	if (u_gamma == 1){
+		color.xyz = degamma(color.xyz);
+		ambient_light = degamma(ambient_light);
+		light_color = degamma(light_color);
+		gb2_color.xyz = degamma(gb2_color.xyz);
+	}
+
+	// Point
+	if (u_light_type == 1){
+		computeL_point(LightComp);
+	}
+
+	// Spot
+	else if (u_light_type == 2){
+		computeL_point(LightComp);
+		computeSpotFactor(LightComp);
+	}
+
+	// Directional
+	else if (u_light_type == 3){
+		computeL_directional(LightComp);
+	}
+
+	computeNdotL(LightComp);
+
+	//we compute the reflection in base to the color and the metalness
+	vec3 f0 = mix( vec3(0.5), color.xyz, metalness);
+
+	//metallic materials do not have diffuse
+	vec3 diffuseColor = (1.0 - metalness) * color.xyz;
+
+	LightComp.V = normalize(u_camera_position - LightComp.world_position);
+	LightComp.H = normalize(LightComp.V + LightComp.L);
+
+	LightComp.NdotH = max(dot(LightComp.N, LightComp.H), 0.0);
+	LightComp.NdotV = max(dot(LightComp.N, LightComp.V), 0.0);
+	LightComp.LdotH = max(dot(LightComp.L, LightComp.H), 0.0);
+
+	//compute the specular
+	vec3 Fr_d = specularBRDF( roughness, f0, LightComp.NdotH, LightComp.NdotV, LightComp.NdotL, LightComp.LdotH);
+
+	// Here we use the Burley, but you can replace it by the Lambert.
+	float linearRoughness = pow(roughness, 2.0);
+	vec3 Fd_d = diffuseColor * Fd_Burley(LightComp.NdotV,LightComp.NdotL,LightComp.LdotH,linearRoughness); 
+
+	//add diffuse and specular reflection
+	vec3 direct = Fr_d + Fd_d;
+
+	if (u_light_cast_shadows == 1){
+		testShadowMap(LightComp);
+	}
+
+	computeAttenuation(LightComp);
+
+	//compute how much light received the pixel
+	vec3 lightParams = light_color * LightComp.att_factor * LightComp.spot_factor * LightComp.shadow_factor;
+
+	//modulate direct light by light received
+	light += direct * lightParams;
+	light += color.xyz * ambient_light * ao_factor; 
+	// Apply other textures
+	// Emissive
+	light += gb2_color.xyz;
+
+	// Occlusion
+	// Occlusion value is only in one coordinate
+	light *= texture(u_gb2_texture, uv).w;
+
+	FragColor = vec4(light, 1.0);
+}
+
+//-------------------------------- SSAO --------------------------------------
+\ssao.fs
+#version 330 core
+
+in vec2 v_uv;
+
+uniform sampler2D u_gb1_texture;
+uniform sampler2D u_depth_texture;
+
+uniform mat4 u_viewprojection;
+uniform mat4 u_inverse_viewprojection;
+uniform vec2 u_iRes;
+uniform vec3 u_points[64];
+
+#include ssao_functions
+
+out vec4 FragColor;
+void main()
+{
+	vec2 uv = gl_FragCoord.xy * u_iRes.xy;
+
+	float depth = texture( u_depth_texture, uv ).x;
+
+	//ignore pixels in the background
+	if(depth >= 1.0)
+	{
+		FragColor = vec4(1.0);
+		return;
+	}
+
+	vec4 original_point = gl_FragCoord;
+
+	vec4 screen_pos = vec4(uv.x*2.0-1.0, uv.y*2.0-1.0, depth*2.0-1.0, 1.0 );
+	vec4 proj_worldpos = u_inverse_viewprojection * screen_pos;
+	vec3 world_position = proj_worldpos.xyz / proj_worldpos.w;
+
+	const int samples = 64;
+	float num = samples; //num inicial de muestras que no estan ocluidas
+
+	//for every sample around the point
+	for( int i = 0; i < samples; ++i )
+	{
+		//compute is world position using the random
+		vec3 delta = u_points[i] * 10.0;
+		float angle = gl_FragCoord.x * 1013.89 + gl_FragCoord.y * 1031.41;
+		delta = rotateY( angle, delta );
+		vec3 p = world_position + delta;
+
+		//find the uv in the depth buffer of this point
+		vec4 proj = u_viewprojection * vec4(p,1.0);  // multiplicar por la view para estar en screen space
+		proj.xy /= proj.w; //convert to clipspace from homogeneous
+
+		//apply a tiny bias to its z before converting to clip-space
+		proj.z = (proj.z - 0.005) / proj.w;  // sin este bias un pixel se puede ocluir a si mismo
+		proj.xyz = proj.xyz * 0.5 + vec3(0.5); //to [0..1]
+
+		//read p true depth
+		float pdepth = texture( u_depth_texture, proj.xy ).x;
+
+		//compare true depth with its depth
+		float diff = proj.z - pdepth;
+		if( diff > 0.0 && diff < 0.001 ) //if true depth smaller, is inside
+		{
+			float x_mod = pow((u_points[i].x), 2);
+			float y_mod = pow((u_points[i].y), 2);
+			float z_mod = pow((u_points[i].z), 2);
+			float dist = sqrt(x_mod + y_mod + z_mod);
+
+			num = num - dist; //remove this point from the list of visible
+		}
+	}
+
+	//finally, compute the AO factor as the ratio of visible points
+	float ao = float(num) / float(samples);
+
+	FragColor = vec4(ao);
+
+}
+
+//----------------------------------- SSAO Plus ------------------------------
+\ssao_plus.fs
+#version 330 core
+
+in vec2 v_uv;
+
+uniform sampler2D u_gb1_texture;
+uniform sampler2D u_depth_texture;
+
+uniform mat4 u_viewprojection;
+uniform mat4 u_inverse_viewprojection;
+uniform vec2 u_iRes;
+uniform vec3 u_points[64];
+
+#include ssao_functions
+
+out vec4 FragColor;
+void main()
+{
+	vec2 uv = gl_FragCoord.xy * u_iRes.xy;
+
+	float depth = texture( u_depth_texture, uv ).x;
+	vec3 gb1_color = texture(u_gb1_texture, uv).xyz; //desconvertir rango
+	vec3 normal = normalize(gb1_color * 2.0 - vec3(1.0));
+
+	//ignore pixels in the background
+	if(depth >= 1.0)
+	{
+		FragColor = vec4(1.0);
+		return;
+	}
+
+	vec4 original_point = gl_FragCoord;
+
+	vec4 screen_pos = vec4(uv.x*2.0-1.0, uv.y*2.0-1.0, depth*2.0-1.0, 1.0 );
+	vec4 proj_worldpos = u_inverse_viewprojection * screen_pos;
+	vec3 world_position = proj_worldpos.xyz / proj_worldpos.w;
+
+	const int samples = 64;
+	float num = samples; //inicial non-occluded samples
+
+	//to create the matrix33 to convert from tangent to world
+	mat3 rotmat = cotangent_frame( normal, world_position, uv );
+
+	//for every sample around the point
+	for( int i = 0; i < samples; ++i )
+	{
+		//compute is world position using the random
+		vec3 delta = u_points[i] * 10.0;
+		vec3 p = world_position + delta;
+
+		//rotate a point is easy
+		vec3 rotated_point = world_position + rotmat * delta;
+
+		//find the uv in the depth buffer of this point
+		vec4 proj = u_viewprojection * vec4(rotated_point,1.0);  // multiplicar por la view para estar en screen space
+		proj.xy /= proj.w; //convert to clipspace from homogeneous
+
+		//apply a tiny bias to its z before converting to clip-space
+		proj.z = (proj.z - 0.005) / proj.w;  // sin este bias un pixel se puede ocluir a si mismo
+		proj.xyz = proj.xyz * 0.5 + vec3(0.5); //to [0..1]
+
+		//read p true depth
+		float pdepth = texture( u_depth_texture, proj.xy ).x;
+
+		//compare true depth with its depth
+		float diff = proj.z - pdepth;
+		if( diff > 0.0 && diff < 0.001 ) //if true depth smaller, is inside
+		{
+			float x_mod = pow((u_points[i].x), 2);
+			float y_mod = pow((u_points[i].y), 2);
+			float z_mod = pow((u_points[i].z), 2);
+			float dist = sqrt(x_mod + y_mod + z_mod);
+
+			num = num - dist; //remove this point from the list of visible
+		}
+	}
+
+	//finally, compute the AO factor as the ratio of visible points
+	float ao = float(num) / float(samples);
+
+	FragColor = vec4(ao);
+}
+
+//---------------------------------- Probe ----------------------------------------
+\probe.fs
+
+#version 330 core
+
+in vec3 v_position;
+in vec3 v_world_position;
+in vec3 v_normal;
+in vec2 v_uv;
+in vec4 v_color;
+
+uniform vec3 u_coeffs[9];
+
+out vec4 FragColor;
+
+const float Pi = 3.141592654;
+const float CosineA0 = Pi;
+const float CosineA1 = (2.0 * Pi) / 3.0;
+const float CosineA2 = Pi * 0.25;
+struct SH9 { float c[9]; }; //to store weights
+struct SH9Color { vec3 c[9]; }; //to store colors
+
+void SHCosineLobe(in vec3 dir, out SH9 sh) //SH9
+{
+	// Band 0
+	sh.c[0] = 0.282095 * CosineA0;
+	// Band 1
+	sh.c[1] = 0.488603 * dir.y * CosineA1; 
+	sh.c[2] = 0.488603 * dir.z * CosineA1;
+	sh.c[3] = 0.488603 * dir.x * CosineA1;
+	// Band 2
+	sh.c[4] = 1.092548 * dir.x * dir.y * CosineA2;
+	sh.c[5] = 1.092548 * dir.y * dir.z * CosineA2;
+	sh.c[6] = 0.315392 * (3.0 * dir.z * dir.z - 1.0) * CosineA2;
+	sh.c[7] = 1.092548 * dir.x * dir.z * CosineA2;
+	sh.c[8] = 0.546274 * (dir.x * dir.x - dir.y * dir.y) * CosineA2;
+}
+
+vec3 ComputeSHIrradiance(in vec3 normal, in SH9Color sh)
+{
+	// Compute the cosine lobe in SH, oriented about the normal direction
+	SH9 shCosine;
+	SHCosineLobe(normal, shCosine);
+	// Compute the SH dot product to get irradiance
+	vec3 irradiance = vec3(0.0);
+	for(int i = 0; i < 9; ++i)
+		irradiance += sh.c[i] * shCosine.c[i];
+
+	return irradiance;
+}
+
+
+
+void main()
+{
+	SH9Color sh;
+	// UN POCO CUTRE -- GUARDAMOS TODOS LOS COEFICIENTES EN LA ESTRUCTURA
+	sh.c[0] = u_coeffs[0];
+	sh.c[1] = u_coeffs[1];
+	sh.c[2] = u_coeffs[2];
+	sh.c[3] = u_coeffs[3];
+	sh.c[4] = u_coeffs[4];
+	sh.c[5] = u_coeffs[5];
+	sh.c[6] = u_coeffs[6];
+	sh.c[7] = u_coeffs[7];
+	sh.c[8] = u_coeffs[8];
+
+	// COGER DE LA TEXTURA
+	vec3 N = normalize(v_normal);
+	//now we can use the coefficients to compute the irradiance
+	vec3 irradiance = ComputeSHIrradiance( N, sh );
+
+	//fill the coefficients
+	//const float d_uvx = 1.0 / 9.0;
+	//for(int i = 0; i < 9; ++i)
+	//{
+	//	vec2 coeffs_uv = vec2( (float(i)+0.5) * d_uvx, row_uv );
+	//	sh.c[i] = texture( u_probes_texture, coeffs_uv).xyz;
+	//}
+
+	FragColor = vec4(irradiance,1.0);
+}
+
+//---------------------------------- Depth ----------------------------------------
+\depth.fs
+
+#version 330 core
+
+uniform vec2 u_camera_nearfar;
+uniform sampler2D u_texture; //depth map
+in vec2 v_uv;
+out vec4 FragColor;
+
+void main()
+{
+	float n = u_camera_nearfar.x;
+	float f = u_camera_nearfar.y;
+	float z = texture2D(u_texture,v_uv).x;
+	float color = n * (z + 1.0) / (f + n - z * (f - n));
+	FragColor = vec4(color);
+}
+
+//---------------------------------- Instanced ----------------------------------------
+
+\instanced.vs
+
+#version 330 core
+
+in vec3 a_vertex;
+in vec3 a_normal;
+in vec2 a_coord;
+
+in mat4 u_model;
+
+uniform vec3 u_camera_pos;
+
+uniform mat4 u_viewprojection;
+
+//this will store the color for the pixel shader
+out vec3 v_position;
+out vec3 v_world_position;
+out vec3 v_normal;
+out vec2 v_uv;
+
+void main()
+{	
+	//calcule the normal in camera space (the NormalMatrix is like ViewMatrix but without traslation)
+	v_normal = (u_model * vec4( a_normal, 0.0) ).xyz;
+	
+	//calcule the vertex in object space
+	v_position = a_vertex;
+	v_world_position = (u_model * vec4( a_vertex, 1.0) ).xyz;
+	
+	//store the texture coordinates
+	v_uv = a_coord;
+
+	//calcule the position of the vertex using the matrices
+	gl_Position = u_viewprojection * vec4( v_world_position, 1.0 );
+}

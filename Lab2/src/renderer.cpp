@@ -59,6 +59,8 @@ GTR::Renderer::Renderer()
 	show_ssao = false;
 	SSAOType = SSAO_plus;
 
+	probe.pos.set(82, 92, -2 29);
+
 	// meshes
 	sphere = Mesh::Get("data/meshes/sphere.obj", false, false);
 	quad = Mesh::getQuad();
@@ -1428,4 +1430,27 @@ std::vector<Vector3> GTR::generateSpherePoints(int num, float radius, bool hemi)
 			p.z *= -1.0;
 	}
 	return points;
+}
+
+void Renderer::renderProbe(Vector3 pos, float size, float* coeffs)
+{
+	Camera* camera = Camera::current;
+	Shader* shader = Shader::Get("probe");
+	Mesh* mesh = Mesh::Get("data/meshes/sphere.obj");
+
+	glEnable(GL_CULL_FACE);
+	glDisable(GL_BLEND);
+	glEnable(GL_DEPTH_TEST);
+
+	Matrix44 model;
+	model.setTranslation(pos.x, pos.y, pos.z);
+	model.scale(size, size, size);
+
+	shader->enable();
+	shader->setUniform("u_viewprojection", camera->viewprojection_matrix);
+	shader->setUniform("u_camera_position", camera->eye);
+	shader->setUniform("u_model", model);
+	shader->setUniform3Array("u_coeffs", coeffs, 9);
+
+	mesh->render(GL_TRIANGLES);
 }

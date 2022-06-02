@@ -1,0 +1,11 @@
+Model Information:
+* title:	Wall Lamp
+* source:	https://sketchfab.com/3d-models/wall-lamp-9f406cf7c5594d6588dd7f8eb2a0d8a8
+* author:	workwalker (https://sketchfab.com/workwalker)
+
+Model License:
+* license type:	CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)
+* requirements:	Author must be credited. Commercial use is allowed.
+
+If you use this 3D model in your project be sure to copy paste this credit wherever you share it:
+This work is based on "Wall Lamp" (https://sketchfab.com/3d-models/wall-lamp-9f406cf7c5594d6588dd7f8eb2a0d8a8) by workwalker (https://sketchfab.com/workwalker) licensed under CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)

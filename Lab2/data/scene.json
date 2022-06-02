@@ -31,7 +31,7 @@
 			"name":"car3",
 			"type":"PREFAB",
 			"filename":"prefabs/toyota_land_cruiser/scene.gltf",
-			"position":[-268.2,-1.7,-413.9],
+			"position":[-572.65,-1.7,-413.9],
 			"angle":-90,
 			"scale": [1.11, 1.11, 1.11]
 		},
@@ -68,7 +68,7 @@
 			"name":"tree2",
 			"type":"PREFAB",
 			"filename":"prefabs/tree/scene.gltf",
-			"position":[44.2,0,-377.3],
+			"position":[-210,0,-377.3],
 			"angle":-3.5,
 			"scale":[0.8,0.8,0.8]
 		},
@@ -76,7 +76,7 @@
 			"name":"bicycle",
 			"type":"PREFAB",
 			"filename":"prefabs/3d_road_bike/scene.gltf",
-			"position":[48.5,38.424,-307.863],
+			"position":[-196.1,38.424,-307.863],
 			"angle":180.351,
 			"angle_x": 25.7,
 			"angle_y": 0.927,
@@ -90,7 +90,14 @@
 			"angle":97,
 			"scale":[15.5,15.5,15.5]
 		},
-		
+		{
+			"name":"sign",
+			"type":"PREFAB",
+			"filename":"prefabs/sign.glb",
+			"position":[118,48,-400],
+			"angle":120,
+			"scale":[60,60,60]
+		},
 		{
 			"name":"spot",
 			"type":"LIGHT",
@@ -122,11 +129,11 @@
 		{
 			"name":"spot3",
 			"type":"LIGHT",
-			"position":[-164.9,31,-427.1],
+			"position":[-444.1,31,-427.1],
 			"angle": 100,
 			"color":[1,0.9,0.8],
 			"intensity":3,
-			"max_dist":1000,
+			"max_dist":588,
 			"cone_angle":35.1,
 			"cone_exp":23,
 			"light_type":"SPOT",
@@ -186,7 +193,7 @@
 		{
 			"name":"pointlight6",
 			"type":"LIGHT",
-			"position":[-411.3,34.9,-390.4],
+			"position":[-738.273,34.9,-390.4],
 			"angle": 0,
 			"color":[1,0.2,0.1],
 			"intensity":2.5,
@@ -196,7 +203,7 @@
 		{
 			"name":"pointlight7",
 			"type":"LIGHT",
-			"position":[-406.7,34.9,-433.2],
+			"position":[-730.4,34.9,-433.2],
 			"angle": 0,
 			"color":[1,0.2,0.1],
 			"intensity":2.5,
