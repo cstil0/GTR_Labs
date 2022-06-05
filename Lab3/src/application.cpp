@@ -270,6 +270,15 @@ void Application::renderDebugGUI(void)
 		ImGui::SliderFloat("Scale", &renderer->scale, 0.01, 10);
 		ImGui::TreePop();
 	}
+	if (ImGui::TreeNode("Irradiance")) {
+		if (ImGui::Button("Generate probes"))
+			renderer->generateProbes(GTR::Scene::instance);
+		if (ImGui::Button("Save probes to disk"))
+			renderer->saveProbesToDisk();
+		if (ImGui::Button("Load probes from disk"))
+			renderer->loadProbesFromDisk();
+		ImGui::TreePop();
+	}
 
 	//add info to the debug panel about the camera
 	if (ImGui::TreeNode(camera, "Camera")) {
@@ -313,7 +322,7 @@ void Application::onKeyDown( SDL_KeyboardEvent event )
 		case SDLK_F1: render_debug = !render_debug; break;
 		case SDLK_f: camera->center.set(0, 0, 0); camera->updateViewMatrix(); break;
 		case SDLK_F5: Shader::ReloadAll(); break;
-		case SDLK_SPACE: renderer->captureProbe(renderer->probe); break;
+		case SDLK_SPACE: renderer->generateProbes(GTR::Scene::instance); break;
 		case SDLK_F6:
 			scene->clear();
 			scene->load(scene->filename.c_str());

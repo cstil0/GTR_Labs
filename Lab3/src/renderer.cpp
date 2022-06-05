@@ -34,6 +34,7 @@ GTR::Renderer::Renderer()
 	ssao_fbo = NULL;
 	screen_texture = NULL;
 	screen_fbo = NULL;
+	probes_texture = NULL;
 	width_shadowmap = 2048;
 	height_shadowmap = 2048;
 
@@ -43,6 +44,8 @@ GTR::Renderer::Renderer()
 	debug_texture = eTextureType::COMPLETE;
 	show_buffers = false;
 	pbr = true;
+	show_probes_texture = false;
+	show_probes = false;
 
 	pipeline = FORWARD;
 	typeOfRender = eRenderPipeline::MULTIPASS;
@@ -60,12 +63,94 @@ GTR::Renderer::Renderer()
 	show_ssao = false;
 	SSAOType = SSAO_plus;
 
-	probe.pos.set(82, 92, -229);
-	//probe.sh.coeffs[0].set(1, 0, 0);
-
 	// meshes
 	sphere = Mesh::Get("data/meshes/sphere.obj", false, false);
 	quad = Mesh::getQuad();
+
+	//generateProbes(Scene::instance);
+}
+
+// LO BUENO QUE TIENE EL BLOQUE DE MEMORIA DE LAS PROBES ES QUE LAS TENEMOS TODAS COLINDANTES, DE FORMA QUE PARA EVITAR GENERARLAS CADA VEZ
+// PODEMOS GUARDARLAS COMO BINARIO EN EL DISCO Y RECUPERARLAS FACILMENTE
+void Renderer::generateProbes(Scene* scene){
+	//when computing the probes position… define the corners of the axis aligned grid this can be done using the boundings of our scene
+	Vector3 start_pos(-300, 5, -400);
+	Vector3 end_pos(300, 150, 400);
+	//define how many probes you want per dimension
+	Vector3 dim(10, 4, 10);
+	//compute the vector from one corner to the other
+	Vector3 delta = (end_pos - start_pos);
+
+	// CREO QUE ME PARECE MÁS BONITO INICIALIZAR ESTO EN RENDERER Y LEER DE AHI, NO AL REVES
+	start_irr = start_pos;
+	end_irr = end_pos;
+	dim_irr = dim;
+	//and scale it down according to the subdivisions we substract one to be sure the last probe is at end pos
+	delta.x /= (dim.x - 1);
+	delta.y /= (dim.y - 1);
+	delta.z /= (dim.z - 1);
+	//now delta give us the distance between probes in every axis
+
+	//lets compute the centers
+	//pay attention at the order at which we add them
+		for (int z = 0; z < dim.z; ++z)
+			for (int y = 0; y < dim.y; ++y)
+				for (int x = 0; x < dim.x; ++x)
+				{
+					sProbe p;
+					p.local.set(x, y, z);
+					//index in the linear array
+					p.index = x + y * dim.x + z * dim.x * dim.y;
+					//and its position
+					p.pos = start_pos + delta * Vector3(x, y, z);
+					probes.push_back(p);
+				}
+
+		std::cout << std::endl;
+		//now compute the coeffs for every probe
+		for (int iP = 0; iP < probes.size(); ++iP)
+		{
+			int probe_index = iP;
+			captureProbe(probes[iP], scene);
+			// EL CARACTER \R HACE QUE VUELVA AL PRINCIPIO, EN LUGAR DE VOLVER A PRINTAR TODA LA LINEA ABAJO
+			std::cout << "Generating probes: " << iP << "/" << probes.size() << "\r";
+		}
+		std::cout << std::endl;
+		std::cout << "DONE" << std::endl;
+
+
+		//create the texture to store the probes (do this ONCE!!!)
+		// SI NO ES NULO ELIMINAMOS LA TEXTURA Y LA VOLVEMOS A CREAR PARA PODER CAMBIAR EL TAMAÑO SI VAMOS A AÑADIR MÁS PROBES
+		// DE ESTA FORMA PODRÍAMOS EDITAR EL NUMERO DESDE EL EDITOR
+		if(probes_texture != NULL)
+			delete probes_texture;
+
+		probes_texture = new Texture(
+			9, //9 coefficients per probe
+			probes.size(), //as many rows as probes
+			GL_RGB, //3 channels per coefficient
+			GL_FLOAT); //they require a high range
+			//we must create the color information for the texture. because every
+		//SH are 27 floats in the RGB, RGB, ... order, we can create an array of
+		//SphericalHarmonics and use it as pixels of the texture
+		SphericalHarmonics* sh_data = NULL;
+		// ESTO ES UN ARRAY DE LOS 9 COEFICIENTES DE CADA PROBE QUE MIDE ANCHO POR ALTO POR PROFUNDIDAD
+		sh_data = new SphericalHarmonics[dim.x * dim.y * dim.z];
+		//here we fill the data of the array with our probes in x,y,z order
+		for (int i = 0; i < probes.size(); ++i)
+			sh_data[i] = probes[i].sh;
+		//now upload the data to the GPU as a texture
+		probes_texture->upload(GL_RGB, GL_FLOAT, false, (uint8*)sh_data);
+		//disable any texture filtering when reading
+		probes_texture->bind();
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+		//always free memory after allocating it!!!
+		delete[] sh_data;
+
+
+	//probe.sh.coeffs[0].set(1, 0, 0);
+
 }
 
 // --- Rendercalls manager functions ---
@@ -364,8 +449,11 @@ void Renderer::renderScene_RenderCalls(GTR::Scene* scene, Camera* camera) {
 	else
 		renderDeferred(camera);
 
-	if (show_shadowmap)
+	if (show_shadowmap && shadowmap)
 		showShadowmap(lights[debug_shadowmap]);
+
+	if (show_probes_texture && probes_texture)
+		probes_texture->toViewport();
 }
 
 //renders all the prefab
@@ -593,11 +681,16 @@ void GTR::Renderer::renderMeshWithMaterialToGBuffers(const Matrix44 model, Mesh*
 	Texture* emissive_texture = NULL;
 	emissive_texture = material->emissive_texture.texture;
 
-	if (emissive_texture)
+	if (emissive_texture) {
 		shader->setUniform("u_emissive_texture", emissive_texture, 1);
+		shader->setUniform3("u_emissive_factor", vec3(0.0, 0.0, 0.0));
+	}
+
 	// black texture will not add additional light
-	else
+	else {
 		shader->setUniform("u_emissive_texture", Texture::getBlackTexture(), 1);
+		shader->setUniform3("u_emissive_factor", material->emissive_factor);
+	}
 
 
 	// pass textures to the shader
@@ -705,7 +798,10 @@ void GTR::Renderer::renderForward(Camera* camera, bool renderToScreen)
 	// TAMAÑO 1 UNIDAD
 	// LE PASAMOS SOLO EL PRIMER COEFICIENTE// 
 	// .v ES PARA COGER UN PUNTERO AL PRIMER COEFICIENTE
-	renderProbe(probe.pos, 5, probe.sh.coeffs[0].v);
+	if (show_probes) {
+		for (int i = 0; i < probes.size(); ++i)
+			renderProbe(probes[i].pos, 2, probes[i].sh.coeffs[0].v);
+	}
 
 
 	// gamma correction needs to be applyied after rendering all lights (only in multipass)
@@ -912,6 +1008,33 @@ void GTR::Renderer::applyIllumination_deferred(Scene* scene, Camera* camera, Mat
 	Vector3 temp_ambient = scene->ambient_light;
 
 	glEnable(GL_CULL_FACE);
+
+	if (probes_texture){
+		Shader* shader_irr = Shader::Get("irradiance");
+		shader_irr->enable();
+		shader_irr->setUniform("u_viewprojection", inv_vp);
+		shader_irr->setUniform("u_gb0_texture", gbuffers_fbo->color_textures[0], 0);
+		shader_irr->setUniform("u_gb1_texture", gbuffers_fbo->color_textures[1], 1);
+		shader_irr->setUniform("u_gb2_texture", gbuffers_fbo->color_textures[2], 2);
+		if (ssao)
+			shader_irr->setUniform("u_ssao_texture", ssao_fbo->color_textures[0], 5);
+		else
+			shader_irr->setUniform("u_ssao_texture", Texture::getWhiteTexture(), 5);
+		shader_irr->setUniform("u_depth_texture", illumination_fbo->depth_texture, 1);
+		shader_irr->setUniform("u_iRes", Vector2(1.0 / (float)width, 1.0 / (float)height));
+
+		shader_irr->setUniform("u_irr_texture", probes_texture, 6);
+		shader_irr->setUniform("u_irr_start", start_irr);
+		shader_irr->setUniform("u_irr_end", end_irr);
+		shader_irr->setUniform("u_irr_dim", dim_irr);
+		shader_irr->setUniform("u_irr_delta", end_irr - start_irr);
+		// ES UN FACTOR -- A QUE DISTANCIA QUIERO SAMPLEARLO, NO JUSTO EN EL WORLD POSITION SINO UN POCO MÁS ADELANTE (QUE?)
+		shader_irr->setUniform("u_irr_normal_distance", 0.1f);
+		// LA TEXTURA MIDE TANTO COMO EL NUMERO DE PROBES QUE HAY
+		shader_irr->setUniform("u_num_probes", probes_texture->height);
+
+		quad->render(GL_TRIANGLES);
+	}
 
 	bool has_directional = true;
 	// if moonlight is not visible, we will not be rendering all the screen, only the spheres where lights are
@@ -1123,11 +1246,16 @@ void Renderer::setSinglepass_parameters(GTR::Material* material, Shader* shader,
 	else
 		glDisable(GL_BLEND);
 
-	if (emissive_texture)
+	if (emissive_texture) {
 		shader->setUniform("u_emissive_texture", emissive_texture, 1);
+		shader->setUniform3("u_emissive_factor", vec3(0.0, 0.0, 0.0));
+	}
+
 	// black texture will not add additional light
-	else
+	else {
 		shader->setUniform("u_emissive_texture", Texture::getBlackTexture(), 1);
+		shader->setUniform3("u_emissive_factor", material->emissive_factor);
+	}
 
 	// Define some variables to store lights information
 	std::vector<int> lights_type;
@@ -1402,6 +1530,8 @@ void GTR::Renderer::renderInMenu() {
 	else {
 		ImGui::Combo("Textures", &debug_texture, "COMPLETE\0NORMAL\0OCCLUSION\0EMISSIVE\0METALNESS\0ROUGHNESS");
 	}
+	ImGui::Checkbox("Show probes", &show_probes);
+	ImGui::Checkbox("Show probes texture", &show_probes_texture);
 }
 
 Texture* GTR::CubemapFromHDRE(const char* filename)
@@ -1479,7 +1609,7 @@ void Renderer::renderProbe(Vector3 pos, float size, float* coeffs)
 	mesh->render(GL_TRIANGLES);
 }
 
-void Renderer::captureProbe(sProbe& probe) {
+void Renderer::captureProbe(sProbe& probe, Scene* scene) {
 	Camera cam;
 	FloatImage images[6]; //here we will store the six views
 
@@ -1513,4 +1643,71 @@ void Renderer::captureProbe(sProbe& probe) {
 
 	//compute the coefficients given the six images
 	probe.sh = computeSH(images);
+}
+
+void GTR::Renderer::saveProbesToDisk()
+{
+	//fill header structure
+	sIrrHeader header;
+	header.start = start_irr;
+	header.end = end_irr;
+	header.dims = dim_irr;
+	header.delta = end_irr - start_irr;
+	header.num_probes = dim_irr.x * dim_irr.y * dim_irr.z;
+	//write to file header and probes data
+	FILE* f = fopen("irradiance.bin", "wb");
+	fwrite(&header, sizeof(header), 1, f);
+	fwrite(&(probes[0]), sizeof(sProbe), probes.size(), f);
+	fclose(f);
+}
+
+bool GTR::Renderer::loadProbesFromDisk()
+{
+	const char* filename = "irradiance.bin";
+	//load probes info from disk
+	FILE* f = fopen(filename, "rb");
+	if (!f)
+		return false;
+	//read header
+	sIrrHeader header;
+	fread(&header, sizeof(header), 1, f);
+	//copy info from header to our local vars
+	start_irr = header.start;
+	end_irr = header.end;
+	dim_irr = header.dims;
+	//irradiance_delta = header.delta;
+	int num_probes = header.num_probes;
+	//allocate space for the probes
+	probes.resize(num_probes);
+	//read from disk directly to our probes container in memory
+	fread(&probes[0], sizeof(sProbe), probes.size(), f);
+	fclose(f);
+	//build the texture again…
+	if (probes_texture != NULL)
+		delete probes_texture;
+
+
+	// AIXÒ S'HAURIA DE POSAR EN UNA FUNCIÓ
+	probes_texture = new Texture(
+		9, //9 coefficients per probe
+		probes.size(), //as many rows as probes
+		GL_RGB, //3 channels per coefficient
+		GL_FLOAT); //they require a high range
+		//we must create the color information for the texture. because every
+	//SH are 27 floats in the RGB, RGB, ... order, we can create an array of
+	//SphericalHarmonics and use it as pixels of the texture
+	SphericalHarmonics* sh_data = NULL;
+	// ESTO ES UN ARRAY DE LOS 9 COEFICIENTES DE CADA PROBE QUE MIDE ANCHO POR ALTO POR PROFUNDIDAD
+	sh_data = new SphericalHarmonics[dim_irr.x * dim_irr.y * dim_irr.z];
+	//here we fill the data of the array with our probes in x,y,z order
+	for (int i = 0; i < probes.size(); ++i)
+		sh_data[i] = probes[i].sh;
+	//now upload the data to the GPU as a texture
+	probes_texture->upload(GL_RGB, GL_FLOAT, false, (uint8*)sh_data);
+	//disable any texture filtering when reading
+	probes_texture->bind();
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+	//always free memory after allocating it!!!
+	delete[] sh_data;
 }
