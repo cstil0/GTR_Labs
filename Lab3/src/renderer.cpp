@@ -67,6 +67,9 @@ GTR::Renderer::Renderer()
 	sphere = Mesh::Get("data/meshes/sphere.obj", false, false);
 	quad = Mesh::getQuad();
 
+	// skybox
+	skybox = CubemapFromHDRE("data/night.hdre");
+
 	//generateProbes(Scene::instance);
 }
 
@@ -408,6 +411,8 @@ void Renderer::renderScene_RenderCalls(GTR::Scene* scene, Camera* camera) {
 	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 	checkGLErrors();
 
+	renderSkybox(camera);
+
 	// Create the lights vector
 	lights.clear();
 	num_lights_shadows = 0;
@@ -454,6 +459,7 @@ void Renderer::renderScene_RenderCalls(GTR::Scene* scene, Camera* camera) {
 
 	if (show_probes_texture && probes_texture)
 		probes_texture->toViewport();
+
 }
 
 //renders all the prefab
@@ -927,6 +933,28 @@ void GTR::Renderer::renderDeferred(Camera* camera)
 	glEnable(GL_DEPTH_TEST);
 	glDisable(GL_CULL_FACE);
 	glFrontFace(GL_CCW);
+}
+
+void GTR::Renderer::renderSkybox(Camera* camera)
+{
+	Mesh* mesh = Mesh::Get("data/meshes/sphere.obj");
+	glDisable(GL_CULL_FACE);
+	glDisable(GL_DEPTH_TEST);
+
+	Matrix44 model;
+	Shader* shader = Shader::Get("skybox");
+	shader->enable();
+	//model.setTranslation(0, 0, 0);
+	model.setTranslation(camera->eye.x, camera->eye.y, camera->eye.z);
+	model.scale(5, 5, 5);
+	shader->setUniform("u_viewprojection", camera->viewprojection_matrix);
+	shader->setUniform("u_camera_pos", camera->eye);
+	shader->setUniform("u_model", model);
+	shader->setUniform("u_texture", skybox, 0);
+
+	mesh->render(GL_TRIANGLES);
+	shader->disable();
+	glEnable(GL_DEPTH_TEST);
 }
 
 // -- Deferred functions --

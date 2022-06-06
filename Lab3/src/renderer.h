@@ -136,6 +136,9 @@ namespace GTR {
 		Mesh* sphere;
 		Mesh* quad;
 
+		// skybox
+		Texture* skybox;
+
 		Renderer();
 
 		// -- Rendercalls manager functions--
@@ -173,6 +176,8 @@ namespace GTR {
 		void renderFlatMesh(const Matrix44 model, Mesh* mesh, GTR::Material* material, Camera* camera);
 		void renderForward(Camera* camera, bool renderToScreen = true);
 		void renderDeferred(Camera* camera);
+
+		void renderSkybox(Camera* camera);
 
 		// -- Deferred functions
 
