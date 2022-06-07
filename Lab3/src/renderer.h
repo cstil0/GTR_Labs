@@ -78,6 +78,7 @@ namespace GTR {
 			SSAO_plus
 		};
 
+		bool touched;
 
 		// Save only the visible nodes sorted by distance to the camera
 		std::vector<RenderCall> render_calls;
@@ -174,7 +175,7 @@ namespace GTR {
 		//to render one node from the prefab and its children
 		void renderNode(const Matrix44& model, GTR::Node* node, Camera* camera);
 		//to render one mesh given its material and transformation matrix
-		void renderMeshWithMaterial(const Matrix44 model, Mesh* mesh, GTR::Material* material, Camera* camera);
+		void renderMeshWithMaterial(const Matrix44 model, Mesh* mesh, GTR::Material* material, Camera* camera, int i);
 		void renderTransparentMaterial(const Matrix44 model, Mesh* mesh, GTR::Material* material, Camera* camera);
 		//Texture* screenToTexture();
 		void renderMeshWithMaterialToGBuffers(const Matrix44 model, Mesh* mesh, GTR::Material* material, Camera* camera);
@@ -210,6 +211,8 @@ namespace GTR {
 		void captureProbe(sProbe& probe, Scene* scene);
 		void saveProbesToDisk();
 		bool loadProbesFromDisk();
+		void computeIrradianceDeferred(Matrix44 inv_vp);
+		void computeIrradianceForward(Matrix44 model, Material* material, Camera* camera, int i);
 };
 
 	Texture* CubemapFromHDRE(const char* filename);

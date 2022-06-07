@@ -12,7 +12,8 @@ col_corr quad.vs col_corr.fs
 ssao quad.vs ssao.fs
 ssao_plus quad.vs ssao_plus.fs
 probe basic.vs probe.fs
-irradiance quad.vs irradiance.fs
+irradiance_deferred quad.vs irradiance_deferred.fs
+irradiance_forward basic.vs irradiance_forward.fs
 skybox basic.vs skybox.fs
 depth quad.vs depth.fs
 
@@ -945,7 +946,6 @@ uniform vec4 u_color;
 uniform float u_time;
 uniform float u_alpha_cutoff;
 
-uniform mat4 u_model;
 uniform mat4 u_viewprojection;
 
 uniform mat4 u_inverse_viewprojection;
@@ -1010,7 +1010,6 @@ uniform float u_alpha_cutoff;
 
 uniform vec2 u_camera_nearfar;
 
-uniform mat4 u_model;
 uniform mat4 u_viewprojection;
 
 //uniform int u_normal_text_bool;
@@ -1708,9 +1707,9 @@ void main()
 	FragColor = vec4(irradiance,1.0);
 }
 
-//-------------------------------- Irradiance ----------------------------------------
+//-------------------------------- Irradiance Deferred --------------------------------------
 
-\irradiance.fs
+\irradiance_deferred.fs
 #version 330 core
 
 in vec2 v_uv;
@@ -1727,9 +1726,9 @@ uniform vec2 u_iRes;
 uniform vec3 u_irr_start;
 uniform vec3 u_irr_end;
 uniform vec3 u_irr_dim;
-uniform float u_irr_delta;
+uniform vec3 u_irr_delta;
 uniform float u_num_probes;
-uniform vec3 u_irr_normal_distance;
+uniform float u_irr_normal_distance;
 
 out vec4 FragColor;
 
@@ -1763,17 +1762,14 @@ void main()
 	// Y SABEMOS EXACTAMENTE EN QUE FILA Y COLUMNA ESTÁ. ASÍ PODEMOS SABER QUE PROBE ESTÁ MÁS CERCA
 	//computing nearest probe index based on world position
 	vec3 irr_range = u_irr_end - u_irr_start;
-	vec3 irr_local_pos = clamp( world_position - u_irr_start + N * u_irr_normal_distance, //offset a little
-	vec3(0.0), irr_range );
+	vec3 irr_local_pos = clamp( world_position - u_irr_start + N * u_irr_normal_distance, vec3(0.0), irr_range );  //offset a little
 	
 	//convert from world pos to grid pos
 	vec3 irr_norm_pos = irr_local_pos / u_irr_delta;
 	//round values as we cannot fetch between rows for now
 	vec3 local_indices = round( irr_norm_pos );
 	//compute in which row is the probe stored
-	float row = local_indices.x + 
-	local_indices.y * u_irr_dim.x + 
-	local_indices.z * u_irr_dim.x * u_irr_dim.y;
+	float row = local_indices.x + local_indices.y * u_irr_dim.x + local_indices.z * u_irr_dim.x * u_irr_dim.y;
 	//find the UV.y coord of that row in the probes texture
 	float row_uv = (row + 1.0) / (u_num_probes + 1.0);
 
@@ -1782,15 +1778,92 @@ void main()
 	const float d_uvx = 1.0 / 9.0;
 	for(int i = 0; i < 9; ++i)
 	{
-	vec2 coeffs_uv = vec2( (float(i)+0.5) * d_uvx, row_uv );
-	// LEEMOS DE LA TEXTURA PROBES TEXTURE Y LLAMAMOS A LA FUNCIÓN COMPUTESHIRR
-	sh.c[i] = texture( u_irr_texture, coeffs_uv).xyz;
+		vec2 coeffs_uv = vec2( (float(i)+0.5) * d_uvx, row_uv );
+		// LEEMOS DE LA TEXTURA PROBES TEXTURE Y LLAMAMOS A LA FUNCIÓN COMPUTESHIRR
+		sh.c[i] = texture( u_irr_texture, coeffs_uv).xyz;
 	}
 	//now we can use the coefficients to compute the irradiance
 	vec3 irradiance = ComputeSHIrradiance( N, sh );
 
 	vec3 color = gb0_color.xyz * irradiance * ssao_factor;
 	FragColor = vec4(color, 1.0);
+
+}
+
+//-------------------------------- Irradiance Forward --------------------------------------
+
+\irradiance_forward.fs
+#version 330 core
+
+in vec2 v_uv;
+in vec3 v_world_position;
+in vec3 v_normal;
+
+uniform sampler2D u_texture;
+uniform sampler2D u_irr_texture;
+uniform sampler2D u_normal_texture;
+
+uniform vec3 u_camera_position;
+uniform int u_normal_text_bool;
+uniform mat4 u_viewprojection;
+uniform mat4 u_inverse_viewprojection;
+uniform vec2 u_iRes;
+uniform vec3 u_irr_start;
+uniform vec3 u_irr_end;
+uniform vec3 u_irr_dim;
+uniform vec3 u_irr_delta;
+uniform float u_num_probes;
+uniform float u_irr_normal_distance;
+
+out vec4 FragColor;
+
+#include normalmap_functions
+#include irradiance_functions
+
+void main()
+{
+	// HAY QUE HACER CONTROL DE GAMMA
+	vec2 uv = v_uv;
+	vec4 color = texture(u_texture, uv);
+
+	vec3 world_position = v_world_position;
+
+	vec3 N = normalize(v_normal);
+	vec3 V = normalize(u_camera_position - world_position);
+	vec3 normal_pixel = texture(u_normal_texture, uv).xyz;
+	if (u_normal_text_bool == 1)
+		N = perturbNormal(N, V, uv, normal_pixel);
+
+	// CONVERTIMOS LA COORDENADA DE MUNDO DE WORLD SPACE A "GRID SPACE", Y UNA VEZ
+	// SABEMOS DONDE ESTÁ COLOCADO EL PUNTO DENTRO DE LA GRID, NOS CARGAMOS EL DECIMAL
+	// Y SABEMOS EXACTAMENTE EN QUE FILA Y COLUMNA ESTÁ. ASÍ PODEMOS SABER QUE PROBE ESTÁ MÁS CERCA
+	//computing nearest probe index based on world position
+	vec3 irr_range = u_irr_end - u_irr_start;
+	vec3 irr_local_pos = clamp( world_position - u_irr_start + N * u_irr_normal_distance, vec3(0.0), irr_range );  //offset a little
+	
+	//convert from world pos to grid pos
+	vec3 irr_norm_pos = irr_local_pos / u_irr_delta;
+	//round values as we cannot fetch between rows for now
+	vec3 local_indices = round( irr_norm_pos );
+	//compute in which row is the probe stored
+	float row = local_indices.x + local_indices.y * u_irr_dim.x + local_indices.z * u_irr_dim.x * u_irr_dim.y;
+	//find the UV.y coord of that row in the probes texture
+	float row_uv = (row + 1.0) / (u_num_probes + 1.0);
+
+	SH9Color sh;
+	//fill the coefficients
+	const float d_uvx = 1.0 / 9.0;
+	for(int i = 0; i < 9; ++i)
+	{
+		vec2 coeffs_uv = vec2( (float(i)+0.5) * d_uvx, row_uv );
+		// LEEMOS DE LA TEXTURA PROBES TEXTURE Y LLAMAMOS A LA FUNCIÓN COMPUTESHIRR
+		sh.c[i] = texture( u_irr_texture, coeffs_uv).xyz;
+	}
+	//now we can use the coefficients to compute the irradiance
+	vec3 irradiance = ComputeSHIrradiance( N, sh );
+
+	color.xyz *= irradiance;
+	FragColor = vec4(color);
 
 }
 

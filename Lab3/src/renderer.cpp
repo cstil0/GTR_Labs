@@ -23,6 +23,8 @@ using namespace GTR;
 
 GTR::Renderer::Renderer()
 {
+	touched = false;
+
 	max_lights = 10;
 
 	// FBOs
@@ -515,7 +517,7 @@ void Renderer::renderNode(const Matrix44& prefab_model, GTR::Node* node, Camera*
 		if (camera->testBoxInFrustum(world_bounding.center, world_bounding.halfsize))
 		{
 			//render node mesh
-			renderMeshWithMaterial(node_model, node->mesh, node->material, camera);
+			renderMeshWithMaterial(node_model, node->mesh, node->material, camera, 0);
 			//node->mesh->renderBounding(node_model, true);
 		}
 	}
@@ -526,7 +528,7 @@ void Renderer::renderNode(const Matrix44& prefab_model, GTR::Node* node, Camera*
 }
 
 //renders a mesh given its transform and material
-void Renderer::renderMeshWithMaterial(const Matrix44 model, Mesh* mesh, GTR::Material* material, Camera* camera)
+void Renderer::renderMeshWithMaterial(const Matrix44 model, Mesh* mesh, GTR::Material* material, Camera* camera, int i)
 {
 	//in case there is nothing to do
 	if (!mesh || !mesh->getNumVertices() || !material)
@@ -542,6 +544,8 @@ void Renderer::renderMeshWithMaterial(const Matrix44 model, Mesh* mesh, GTR::Mat
 		glEnable(GL_CULL_FACE);
 
 	assert(glGetError() == GL_NO_ERROR);
+	if(irradiance && probes_texture)
+		computeIrradianceForward(model, material, camera, i);
 
 	//chose a shader
 	Scene* scene = Scene::instance;
@@ -823,7 +827,7 @@ void GTR::Renderer::renderForward(Camera* camera, bool renderToScreen)
 		if (rc.mesh && rc.material) {
 			// test if node inside the frustum of the camera
 			if (camera->testBoxInFrustum(rc.world_bounding.center, rc.world_bounding.halfsize))
-				renderMeshWithMaterial(rc.model, rc.mesh, rc.material, camera);
+				renderMeshWithMaterial(rc.model, rc.mesh, rc.material, camera, i);
 		}
 	}
 
@@ -925,7 +929,10 @@ void GTR::Renderer::renderDeferred(Camera* camera)
 
 	// don't need to test depth since the objects are already painted
 	glDisable(GL_DEPTH_TEST);
-	applyIllumination_deferred(scene, camera, inv_vp, width, height);
+	if (show_irradiance)
+		computeIrradianceDeferred(inv_vp);
+	else
+		applyIllumination_deferred(scene, camera, inv_vp, width, height);
 
 	// render objects with alpha
 	//now we copy the gbuffers depth buffer to the binded one since now we need to test depth
@@ -1063,39 +1070,8 @@ void GTR::Renderer::applyIllumination_deferred(Scene* scene, Camera* camera, Mat
 
 	glEnable(GL_CULL_FACE);
 
-	Shader* shader_irr = Shader::Get("irradiance");
-	if (probes_texture && irradiance){
-		temp_ambient = vec3(0.0, 0.0, 0.0);
-		shader_irr->enable();
-		shader_irr->setUniform("u_viewprojection", inv_vp);
-		shader_irr->setUniform("u_gb0_texture", gbuffers_fbo->color_textures[0], 0);
-		shader_irr->setUniform("u_gb1_texture", gbuffers_fbo->color_textures[1], 1);
-		shader_irr->setUniform("u_gb2_texture", gbuffers_fbo->color_textures[2], 2);
-		if (ssao)
-			shader_irr->setUniform("u_ssao_texture", ssao_fbo->color_textures[0], 5);
-		else
-			shader_irr->setUniform("u_ssao_texture", Texture::getWhiteTexture(), 5);
-		shader_irr->setUniform("u_depth_texture", illumination_fbo->depth_texture, 1);
-		shader_irr->setUniform("u_iRes", Vector2(1.0 / (float)width, 1.0 / (float)height));
-
-		shader_irr->setUniform("u_irr_texture", probes_texture, 6);
-		shader_irr->setUniform("u_irr_start", start_irr);
-		shader_irr->setUniform("u_irr_end", end_irr);
-		shader_irr->setUniform("u_irr_dim", dim_irr);
-		shader_irr->setUniform("u_irr_delta", end_irr - start_irr);
-		// ES UN FACTOR -- A QUE DISTANCIA QUIERO SAMPLEARLO, NO JUSTO EN EL WORLD POSITION SINO UN POCO MÁS ADELANTE (QUE?)
-		shader_irr->setUniform("u_irr_normal_distance", 0.1f);
-		// LA TEXTURA MIDE TANTO COMO EL NUMERO DE PROBES QUE HAY
-		shader_irr->setUniform("u_num_probes", probes_texture->height);
-
-		quad->render(GL_TRIANGLES);
-	}
-
-	if (show_irradiance) {
-		shader_irr->disable();
-
-		return;
-	}
+	if (probes_texture && irradiance)
+		computeIrradianceDeferred(inv_vp);
 
 	bool has_directional = true;
 	// if moonlight is not visible, we will not be rendering all the screen, only the spheres where lights are
@@ -1106,7 +1082,7 @@ void GTR::Renderer::applyIllumination_deferred(Scene* scene, Camera* camera, Mat
 		has_directional = lights[lights_size - 1]->light_type == LightEntity::eTypeOfLight::DIRECTIONAL && lights[lights_size - 1]->visible;
 	}
 	// render a quad with only ambient light if there are no lights or no directional light
-	if (!lights.size() || !has_directional) {
+	if ((!lights.size() || !has_directional) && !irradiance) {
 		shader->disable();
 		// Creo otro shader por qué ahora pintaremos un quad en lugar de esferas, y entonces necesitaremos el quad.vs y las uv habituales de la textura
 		Shader* shader_ambient = Shader::Get("deferred_ambient");
@@ -1117,9 +1093,9 @@ void GTR::Renderer::applyIllumination_deferred(Scene* scene, Camera* camera, Mat
 		shader_ambient->setUniform("u_gb1_texture", gbuffers_fbo->color_textures[1], 1);
 		shader_ambient->setUniform("u_gb2_texture", gbuffers_fbo->color_textures[2], 2);
 		if (ssao)
-			shader->setUniform("u_ssao_texture", ssao_fbo->color_textures[0], 5);
+			shader_ambient->setUniform("u_ssao_texture", ssao_fbo->color_textures[0], 3);
 		else
-			shader->setUniform("u_ssao_texture", Texture::getWhiteTexture(), 5);
+			shader_ambient->setUniform("u_ssao_texture", Texture::getWhiteTexture(), 3);
 		quad->render(GL_TRIANGLES);
 		shader_ambient->disable();
 		// set ambient light to zero to avoid adding it again
@@ -1595,58 +1571,6 @@ void GTR::Renderer::renderInMenu() {
 	ImGui::Checkbox("Show probes texture", &show_probes_texture);
 }
 
-Texture* GTR::CubemapFromHDRE(const char* filename)
-{
-	HDRE* hdre = HDRE::Get(filename);
-	if (!hdre)
-		return NULL;
-
-	Texture* texture = new Texture();
-	if (hdre->getFacesf(0))
-	{
-		texture->createCubemap(hdre->width, hdre->height, (Uint8**)hdre->getFacesf(0),
-			hdre->header.numChannels == 3 ? GL_RGB : GL_RGBA, GL_FLOAT);
-		for (int i = 1; i < hdre->levels; ++i)
-			texture->uploadCubemap(texture->format, texture->type, false,
-				(Uint8**)hdre->getFacesf(i), GL_RGBA32F, i);
-	}
-	else
-		if (hdre->getFacesh(0))
-		{
-			texture->createCubemap(hdre->width, hdre->height, (Uint8**)hdre->getFacesh(0),
-				hdre->header.numChannels == 3 ? GL_RGB : GL_RGBA, GL_HALF_FLOAT);
-			for (int i = 1; i < hdre->levels; ++i)
-				texture->uploadCubemap(texture->format, texture->type, false,
-					(Uint8**)hdre->getFacesh(i), GL_RGBA16F, i);
-		}
-	return texture;
-}
-
-std::vector<Vector3> GTR::generateSpherePoints(int num, float radius, bool hemi)
-{
-	std::vector<Vector3> points;
-	points.resize(num);
-	for (int i = 0; i < num; i += 1)
-	{
-		Vector3& p = points[i];
-		float u = random();
-		float v = random();
-		float theta = u * 2.0 * PI;
-		float phi = acos(2.0 * v - 1.0);
-		float r = cbrt(random() * 0.9 + 0.1) * radius;
-		float sinTheta = sin(theta);
-		float cosTheta = cos(theta);
-		float sinPhi = sin(phi);
-		float cosPhi = cos(phi);
-		p.x = r * sinPhi * cosTheta;
-		p.y = r * sinPhi * sinTheta;
-		p.z = r * cosPhi;
-		if (hemi && p.z < 0)
-			p.z *= -1.0;
-	}
-	return points;
-}
-
 void Renderer::renderProbe(Vector3 pos, float size, float* coeffs)
 {
 	Camera* camera = Camera::current;
@@ -1771,4 +1695,135 @@ bool GTR::Renderer::loadProbesFromDisk()
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
 	//always free memory after allocating it!!!
 	delete[] sh_data;
+}
+
+void GTR::Renderer::computeIrradianceDeferred(Matrix44 inv_vp)
+{
+	float width = Application::instance->window_width;
+	float height = Application::instance->window_height;
+
+	Shader* shader_irr = Shader::Get("irradiance_deferred");
+
+	shader_irr->enable();
+
+	shader_irr->setUniform("u_viewprojection", inv_vp);
+	shader_irr->setUniform("u_gb0_texture", gbuffers_fbo->color_textures[0], 0);
+	shader_irr->setUniform("u_gb1_texture", gbuffers_fbo->color_textures[1], 1);
+	shader_irr->setUniform("u_gb2_texture", gbuffers_fbo->color_textures[2], 2);
+	shader_irr->setUniform("u_depth_texture", illumination_fbo->depth_texture, 1);
+	shader_irr->setUniform("u_iRes", Vector2(1.0 / (float)width, 1.0 / (float)height));
+
+	if (ssao)
+		shader_irr->setUniform("u_ssao_texture", ssao_fbo->color_textures[0], 5);
+	else
+		shader_irr->setUniform("u_ssao_texture", Texture::getWhiteTexture(), 5);
+
+	shader_irr->setUniform("u_irr_texture", probes_texture, 6);
+	shader_irr->setUniform("u_irr_start", start_irr);
+	shader_irr->setUniform("u_irr_end", end_irr);
+	shader_irr->setUniform("u_irr_dim", dim_irr);
+	shader_irr->setUniform("u_irr_delta", end_irr - start_irr);
+	// ES UN FACTOR -- A QUE DISTANCIA QUIERO SAMPLEARLO, NO JUSTO EN EL WORLD POSITION SINO UN POCO MÁS ADELANTE (QUE?)
+	shader_irr->setUniform("u_irr_normal_distance", 0.1f);
+	// LA TEXTURA MIDE TANTO COMO EL NUMERO DE PROBES QUE HAY
+	shader_irr->setUniform("u_num_probes", probes_texture->height);
+
+	quad->render(GL_TRIANGLES);
+	shader_irr->disable();
+}
+
+
+void Renderer::computeIrradianceForward(Matrix44 model, Material* material, Camera* camera, int i)
+{
+	if (touched)
+		int l = 0;
+	else
+		int l = 0;
+	Shader* shader_irr = Shader::Get("irradiance_forward");
+
+	Texture* normal = material->normal_texture.texture;
+	Texture* color = material->color_texture.texture;
+	if (!color)
+		int l = 0;
+	shader_irr->enable();
+
+	shader_irr->setUniform("u_texture", color, 0);
+
+	shader_irr->setUniform("u_camera_position", camera->eye);
+	shader_irr->setUniform("u_viewprojection", camera->viewprojection_matrix);
+	shader_irr->setUniform("u_model", model);
+
+	if (normal) 
+	{
+		shader_irr->setUniform("u_normal", normal, 1);
+		shader_irr->setUniform("u_normal_text_bool", 1);
+	}
+	// if the material do not have normal texture as the floor, we set the boolean to false to avoid artifacts
+	else
+		shader_irr->setUniform("u_normal_text_bool", 0);
+
+	shader_irr->setUniform("u_irr_texture", probes_texture, 6);
+	shader_irr->setUniform("u_irr_start", start_irr);
+	shader_irr->setUniform("u_irr_end", end_irr);
+	shader_irr->setUniform("u_irr_dim", dim_irr);
+	shader_irr->setUniform("u_irr_delta", end_irr - start_irr);
+	// ES UN FACTOR -- A QUE DISTANCIA QUIERO SAMPLEARLO, NO JUSTO EN EL WORLD POSITION SINO UN POCO MÁS ADELANTE (QUE?)
+	shader_irr->setUniform("u_irr_normal_distance", 0.1f);
+	// LA TEXTURA MIDE TANTO COMO EL NUMERO DE PROBES QUE HAY
+	shader_irr->setUniform("u_num_probes", probes_texture->height);
+
+	quad->render(GL_TRIANGLES);
+	shader_irr->disable();
+}
+
+Texture* GTR::CubemapFromHDRE(const char* filename)
+{
+	HDRE* hdre = HDRE::Get(filename);
+	if (!hdre)
+		return NULL;
+
+	Texture* texture = new Texture();
+	if (hdre->getFacesf(0))
+	{
+		texture->createCubemap(hdre->width, hdre->height, (Uint8**)hdre->getFacesf(0),
+			hdre->header.numChannels == 3 ? GL_RGB : GL_RGBA, GL_FLOAT);
+		for (int i = 1; i < hdre->levels; ++i)
+			texture->uploadCubemap(texture->format, texture->type, false,
+				(Uint8**)hdre->getFacesf(i), GL_RGBA32F, i);
+	}
+	else
+		if (hdre->getFacesh(0))
+		{
+			texture->createCubemap(hdre->width, hdre->height, (Uint8**)hdre->getFacesh(0),
+				hdre->header.numChannels == 3 ? GL_RGB : GL_RGBA, GL_HALF_FLOAT);
+			for (int i = 1; i < hdre->levels; ++i)
+				texture->uploadCubemap(texture->format, texture->type, false,
+					(Uint8**)hdre->getFacesh(i), GL_RGBA16F, i);
+		}
+	return texture;
+}
+
+std::vector<Vector3> GTR::generateSpherePoints(int num, float radius, bool hemi)
+{
+	std::vector<Vector3> points;
+	points.resize(num);
+	for (int i = 0; i < num; i += 1)
+	{
+		Vector3& p = points[i];
+		float u = random();
+		float v = random();
+		float theta = u * 2.0 * PI;
+		float phi = acos(2.0 * v - 1.0);
+		float r = cbrt(random() * 0.9 + 0.1) * radius;
+		float sinTheta = sin(theta);
+		float cosTheta = cos(theta);
+		float sinPhi = sin(phi);
+		float cosPhi = cos(phi);
+		p.x = r * sinPhi * cosTheta;
+		p.y = r * sinPhi * sinTheta;
+		p.z = r * cosPhi;
+		if (hemi && p.z < 0)
+			p.z *= -1.0;
+	}
+	return points;
 }
