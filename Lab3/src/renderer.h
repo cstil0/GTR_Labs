@@ -139,6 +139,9 @@ namespace GTR {
 		// skybox
 		Texture* skybox;
 
+		// reflections
+		FBO* reflection_fbo;
+
 		Renderer();
 
 		// -- Rendercalls manager functions--
@@ -161,8 +164,9 @@ namespace GTR {
 		
 		//renders several elements of the scene
 		void renderScene(GTR::Scene* scene, Camera* camera);
+		void renderSceneWithReflection(Scene* scene, Camera* camera);
 		// to render the scene using rendercalls vector
-		void renderScene_RenderCalls(GTR::Scene* scene, Camera* camera);
+		void renderScene_RenderCalls(GTR::Scene* scene, Camera* camera, bool renderToScreen = true);
 		//to render a whole prefab (with all its nodes)
 		void renderPrefab(const Matrix44& model, GTR::Prefab* prefab, Camera* camera);
 		//to render one node from the prefab and its children

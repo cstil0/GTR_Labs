@@ -104,7 +104,7 @@ void Application::render(void)
 	//renderer->renderScene(scene, camera);
 
 	// Use the renderCalls function to render the scene with sorted objects
-	renderer->renderScene_RenderCalls(scene, camera);
+	renderer->renderSceneWithReflection(scene, camera);
 
 	//Draw the floor grid, helpful to have a reference point
 	/*if(render_debug)
