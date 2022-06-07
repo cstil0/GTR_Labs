@@ -408,20 +408,20 @@ void Renderer::renderScene(GTR::Scene* scene, Camera* camera)
 }
 
 void Renderer::renderSceneWithReflection(Scene* scene, Camera* camera) {
-	reflection_fbo->bind();
+	//reflection_fbo->bind();
 	// ESTA CAMARA VA A ESTAR EN LA POSICIÓN OPUESTA-- ES EXACTAMENTE LO MISMO PERO CON LA Y INVERTIDA
-	Camera flipped_camera;
-	flipped_camera.lookAt(camera->eye * Vector3(1, -1, 1), camera->center * Vector3(0, -1, 0), Vector3(0, -1, 0));
-	flipped_camera.setPerspective(camera->fov, camera->aspect, camera->near_plane, camera->far_plane);
-	flipped_camera.enable();
+	//Camera flipped_camera;
+	//flipped_camera.lookAt(camera->eye * Vector3(1, -1, 1), camera->center * Vector3(0, -1, 0), Vector3(0, -1, 0));
+	//flipped_camera.setPerspective(camera->fov, camera->aspect, camera->near_plane, camera->far_plane);
+	//flipped_camera.enable();
 
-	bool renderToScreen = false;
-	renderScene_RenderCalls(scene, &flipped_camera, renderToScreen);
-	reflection_fbo->unbind();
+	//bool renderToScreen = false;
+	//renderScene_RenderCalls(scene, &flipped_camera, renderToScreen);
+	//reflection_fbo->unbind();
 	
-	//camera->enable();
-	//renderScene_RenderCalls(scene, camera);
-	reflection_fbo->color_textures[0]->toViewport();
+	camera->enable();
+	renderScene_RenderCalls(scene, camera);
+	//reflection_fbo->color_textures[0]->toViewport();
 }
 
 // To render the scene according to the rendercalls vector
