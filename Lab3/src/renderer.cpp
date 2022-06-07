@@ -70,6 +70,11 @@ GTR::Renderer::Renderer()
 	// skybox
 	skybox = CubemapFromHDRE("data/night.hdre");
 
+	// reflections
+	// SE PUEDE CONTROLAR UN POCO MÁS EL FORMATO
+	reflection_fbo = new FBO();
+	reflection_fbo->create(Application::instance->window_width, Application::instance->window_height);
+
 	//generateProbes(Scene::instance);
 }
 
@@ -402,8 +407,25 @@ void Renderer::renderScene(GTR::Scene* scene, Camera* camera)
 	}
 }
 
+void Renderer::renderSceneWithReflection(Scene* scene, Camera* camera) {
+	reflection_fbo->bind();
+	// ESTA CAMARA VA A ESTAR EN LA POSICIÓN OPUESTA-- ES EXACTAMENTE LO MISMO PERO CON LA Y INVERTIDA
+	Camera flipped_camera;
+	flipped_camera.lookAt(camera->eye * Vector3(1, -1, 1), camera->center * Vector3(0, -1, 0), Vector3(0, -1, 0));
+	flipped_camera.setPerspective(camera->fov, camera->aspect, camera->near_plane, camera->far_plane);
+	flipped_camera.enable();
+
+	bool renderToScreen = false;
+	renderScene_RenderCalls(scene, &flipped_camera, renderToScreen);
+	reflection_fbo->unbind();
+	
+	//camera->enable();
+	//renderScene_RenderCalls(scene, camera);
+	reflection_fbo->color_textures[0]->toViewport();
+}
+
 // To render the scene according to the rendercalls vector
-void Renderer::renderScene_RenderCalls(GTR::Scene* scene, Camera* camera) {
+void Renderer::renderScene_RenderCalls(GTR::Scene* scene, Camera* camera, bool renderToScreen) {
 	//set the clear color (the background color)
 	glClearColor(scene->background_color.x, scene->background_color.y, scene->background_color.z, 1.0);
 
@@ -450,7 +472,7 @@ void Renderer::renderScene_RenderCalls(GTR::Scene* scene, Camera* camera) {
 
 	// check render pipeline
 	if (pipeline == FORWARD)
-		renderForward(camera);
+		renderForward(camera, renderToScreen);
 	else
 		renderDeferred(camera);
 
