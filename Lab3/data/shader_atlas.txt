@@ -1729,7 +1729,7 @@ uniform vec3 u_irr_end;
 uniform vec3 u_irr_dim;
 uniform float u_irr_delta;
 uniform float u_num_probes;
-uniform float u_irr_normal_distance;
+uniform vec3 u_irr_normal_distance;
 
 out vec4 FragColor;
 

@@ -70,6 +70,10 @@ GTR::Renderer::Renderer()
 	// skybox
 	skybox = CubemapFromHDRE("data/night.hdre");
 
+	// irradiance
+	irradiance = false;
+	show_irradiance = false;
+
 	// reflections
 	// SE PUEDE CONTROLAR UN POCO MÁS EL FORMATO
 	reflection_fbo = new FBO();
@@ -1059,8 +1063,9 @@ void GTR::Renderer::applyIllumination_deferred(Scene* scene, Camera* camera, Mat
 
 	glEnable(GL_CULL_FACE);
 
-	if (probes_texture){
-		Shader* shader_irr = Shader::Get("irradiance");
+	Shader* shader_irr = Shader::Get("irradiance");
+	if (probes_texture && irradiance){
+		temp_ambient = vec3(0.0, 0.0, 0.0);
 		shader_irr->enable();
 		shader_irr->setUniform("u_viewprojection", inv_vp);
 		shader_irr->setUniform("u_gb0_texture", gbuffers_fbo->color_textures[0], 0);
@@ -1084,6 +1089,12 @@ void GTR::Renderer::applyIllumination_deferred(Scene* scene, Camera* camera, Mat
 		shader_irr->setUniform("u_num_probes", probes_texture->height);
 
 		quad->render(GL_TRIANGLES);
+	}
+
+	if (show_irradiance) {
+		shader_irr->disable();
+
+		return;
 	}
 
 	bool has_directional = true;

@@ -270,6 +270,10 @@ void Application::renderDebugGUI(void)
 		ImGui::TreePop();
 	}
 	if (ImGui::TreeNode("Irradiance")) {
+		ImGui::Checkbox("Irradiance", &renderer->irradiance);
+		ImGui::Checkbox("Show irradiance", &renderer->show_irradiance);
+		ImGui::Checkbox("Show probes", &renderer->show_probes);
+		ImGui::Checkbox("Show probes texture", &renderer->show_probes_texture);
 		if (ImGui::Button("Generate probes"))
 			renderer->generateProbes(GTR::Scene::instance);
 		if (ImGui::Button("Save probes to disk"))

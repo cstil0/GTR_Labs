@@ -131,6 +131,8 @@ namespace GTR {
 		Vector3 start_irr;
 		Vector3 end_irr;
 		Vector3 dim_irr;
+		bool irradiance;
+		bool show_irradiance;
 
 		// meshes
 		Mesh* sphere;
