@@ -26,6 +26,14 @@ namespace GTR {
 		SphericalHarmonics sh; //coeffs
 	};
 
+	struct sIrrHeader {
+		Vector3 start;
+		Vector3 end;
+		Vector3 delta;
+		Vector3 dims;
+		int num_probes;
+	};
+
 
 	class RenderCall {
 	public:
@@ -88,6 +96,7 @@ namespace GTR {
 		FBO* ssao_fbo;
 		Texture* shadowmap;
 		Texture* screen_texture;
+		Texture* probes_texture;
 		int width_shadowmap; 
 		int height_shadowmap;
 
@@ -114,12 +123,21 @@ namespace GTR {
 		std::vector<Vector3> random_points_hemi;
 		eSSAOType SSAOType;
 		bool ssao;
+		bool show_probes;
+		bool show_probes_texture;
 
-		sProbe probe;
+		// irradiance
+		std::vector<sProbe> probes;
+		Vector3 start_irr;
+		Vector3 end_irr;
+		Vector3 dim_irr;
 
 		// meshes
 		Mesh* sphere;
 		Mesh* quad;
+
+		// skybox
+		Texture* skybox;
 
 		Renderer();
 
@@ -136,6 +154,7 @@ namespace GTR {
 		Vector4 assignMapPiece(int width, int height, int index, int num_elements);
 		Vector4 assignMapPiece_shader(int width, int height, int index, int num_elements);
 		void generateShadowmap(LightEntity* light, int index);
+		void generateProbes(Scene* scene);
 		void showShadowmap(LightEntity* light);
 
 		// -- Render functions --
@@ -157,6 +176,8 @@ namespace GTR {
 		void renderFlatMesh(const Matrix44 model, Mesh* mesh, GTR::Material* material, Camera* camera);
 		void renderForward(Camera* camera, bool renderToScreen = true);
 		void renderDeferred(Camera* camera);
+
+		void renderSkybox(Camera* camera);
 
 		// -- Deferred functions
 
@@ -180,7 +201,9 @@ namespace GTR {
 		void renderInMenu();
 		
 		void renderProbe(Vector3 pos, float size, float* coeffs);
-		void captureProbe(sProbe& probe);
+		void captureProbe(sProbe& probe, Scene* scene);
+		void saveProbesToDisk();
+		bool loadProbesFromDisk();
 };
 
 	Texture* CubemapFromHDRE(const char* filename);
