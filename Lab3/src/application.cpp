@@ -148,8 +148,6 @@ void Application::update(double seconds_elapsed)
 			if (Input::mouse_state & SDL_BUTTON(SDL_BUTTON_LEFT) && !mouse_blocked) //is left button pressed?
 			{
 				camera->orbit(-Input::mouse_delta.x * orbit_speed, Input::mouse_delta.y * orbit_speed);
-				if (Input::mouse_delta.x != 0.0 && Input::mouse_delta.y != 0.0)
-					renderer->touched = true;
 			}
 		}
 	}

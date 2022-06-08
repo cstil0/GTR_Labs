@@ -23,8 +23,6 @@ using namespace GTR;
 
 GTR::Renderer::Renderer()
 {
-	touched = false;
-
 	max_lights = 10;
 
 	// FBOs
@@ -414,16 +412,16 @@ void Renderer::renderScene(GTR::Scene* scene, Camera* camera)
 }
 
 void Renderer::renderSceneWithReflection(Scene* scene, Camera* camera) {
-	//reflection_fbo->bind();
+	reflection_fbo->bind();
 	// ESTA CAMARA VA A ESTAR EN LA POSICIÓN OPUESTA-- ES EXACTAMENTE LO MISMO PERO CON LA Y INVERTIDA
-	//Camera flipped_camera;
-	//flipped_camera.lookAt(camera->eye * Vector3(1, -1, 1), camera->center * Vector3(0, -1, 0), Vector3(0, -1, 0));
-	//flipped_camera.setPerspective(camera->fov, camera->aspect, camera->near_plane, camera->far_plane);
-	//flipped_camera.enable();
+	Camera flipped_camera;
+	flipped_camera.lookAt(camera->eye * Vector3(1, -1, 1), camera->center * Vector3(1, -1, 1), Vector3(0, -1, 0));
+	flipped_camera.setPerspective(camera->fov, camera->aspect, camera->near_plane, camera->far_plane);
+	flipped_camera.enable();
 
-	//bool renderToScreen = false;
-	//renderScene_RenderCalls(scene, &flipped_camera, renderToScreen);
-	//reflection_fbo->unbind();
+	bool renderToScreen = false;
+	renderScene_RenderCalls(scene, &flipped_camera, renderToScreen);
+	reflection_fbo->unbind();
 	
 	camera->enable();
 	renderScene_RenderCalls(scene, camera);
@@ -544,6 +542,7 @@ void Renderer::renderMeshWithMaterial(const Matrix44 model, Mesh* mesh, GTR::Mat
 		glEnable(GL_CULL_FACE);
 
 	assert(glGetError() == GL_NO_ERROR);
+
 	if(irradiance && probes_texture)
 		computeIrradianceForward(model, material, camera, i);
 
@@ -814,6 +813,7 @@ void GTR::Renderer::renderForward(Camera* camera, bool renderToScreen)
 
 		if (renderToScreen)
 			screen_fbo->bind();
+
 		glClearColor(scene->background_color.x, scene->background_color.y, scene->background_color.z, 1.0);
 		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 	}
@@ -827,7 +827,11 @@ void GTR::Renderer::renderForward(Camera* camera, bool renderToScreen)
 		if (rc.mesh && rc.material) {
 			// test if node inside the frustum of the camera
 			if (camera->testBoxInFrustum(rc.world_bounding.center, rc.world_bounding.halfsize))
-				renderMeshWithMaterial(rc.model, rc.mesh, rc.material, camera, i);
+				if (show_irradiance && probes_texture)
+					// HAY QUE QUITAR ESA I
+					computeIrradianceForward(rc.model, rc.material, camera, i);
+				else
+					renderMeshWithMaterial(rc.model, rc.mesh, rc.material, camera, i);
 		}
 	}
 
@@ -1735,10 +1739,6 @@ void GTR::Renderer::computeIrradianceDeferred(Matrix44 inv_vp)
 
 void Renderer::computeIrradianceForward(Matrix44 model, Material* material, Camera* camera, int i)
 {
-	if (touched)
-		int l = 0;
-	else
-		int l = 0;
 	Shader* shader_irr = Shader::Get("irradiance_forward");
 
 	Texture* normal = material->normal_texture.texture;
@@ -1746,8 +1746,12 @@ void Renderer::computeIrradianceForward(Matrix44 model, Material* material, Came
 	if (!color)
 		int l = 0;
 	shader_irr->enable();
+	
+	if (color)
+		shader_irr->setUniform("u_texture", color, 0);
+	else
+		shader_irr->setUniform("u_texture", Texture::getWhiteTexture()); //a 1x1 white texture
 
-	shader_irr->setUniform("u_texture", color, 0);
 
 	shader_irr->setUniform("u_camera_position", camera->eye);
 	shader_irr->setUniform("u_viewprojection", camera->viewprojection_matrix);

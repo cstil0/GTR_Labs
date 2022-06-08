@@ -78,8 +78,6 @@ namespace GTR {
 			SSAO_plus
 		};
 
-		bool touched;
-
 		// Save only the visible nodes sorted by distance to the camera
 		std::vector<RenderCall> render_calls;
 		// Save all lights in the scene
