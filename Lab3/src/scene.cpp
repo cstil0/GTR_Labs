@@ -271,3 +271,18 @@ void GTR::LightEntity::configure(cJSON* json)
 	cast_shadows = readJSONBool(json, "cast_shadows", false);
 	shadow_bias = readJSONNumber(json, "shadow_bias", shadow_bias);
 }
+
+GTR::ReflectionProbeEntity::ReflectionProbeEntity()
+{
+	entity_type = REFLECTION_PROBE;
+	texture = NULL;
+}
+
+void GTR::ReflectionProbeEntity::renderInMenu()
+{
+	BaseEntity::renderInMenu();
+}
+
+void GTR::ReflectionProbeEntity::configure(cJSON* json)
+{
+}

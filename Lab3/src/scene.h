@@ -19,7 +19,7 @@ namespace GTR {
 		LIGHT = 2,
 		CAMERA = 3,
 		REFLECTION_PROBE = 4,
-		DECALL = 5
+		DECALL = 5,
 	};
 
 	class Scene;
@@ -86,6 +86,15 @@ namespace GTR {
 
 		LightEntity();
 
+		virtual void renderInMenu();
+		virtual void configure(cJSON* json);
+	};
+
+	class ReflectionProbeEntity : public GTR::BaseEntity {
+	public:
+		Texture* texture;
+
+		ReflectionProbeEntity();
 		virtual void renderInMenu();
 		virtual void configure(cJSON* json);
 	};

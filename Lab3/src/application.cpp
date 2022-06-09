@@ -69,6 +69,11 @@ Application::Application(int window_width, int window_height, SDL_Window* window
 	if (!scene->load("data/scene.json"))
 		exit(1);
 
+	// GENERAR UNA SOLA PROBE DE REFLECCIÓN PARA PROBAR
+	//GTR::ReflectionProbeEntity* probe;
+	//probe->model.setTranslation(40, 40, 40);
+	//scene->addEntity(probe);
+
 	camera->lookAt(scene->main_camera.eye, scene->main_camera.center, Vector3(0, 1, 0));
 	camera->fov = scene->main_camera.fov;
 
@@ -104,7 +109,10 @@ void Application::render(void)
 	//renderer->renderScene(scene, camera);
 
 	// Use the renderCalls function to render the scene with sorted objects
-	renderer->renderSceneWithReflection(scene, camera);
+	if (renderer->planar_reflection)
+		renderer->renderSceneWithReflection(scene, camera);
+	else
+		renderer->renderScene_RenderCalls(scene, camera, renderer->screen_fbo);
 
 	//Draw the floor grid, helpful to have a reference point
 	/*if(render_debug)
@@ -282,6 +290,14 @@ void Application::renderDebugGUI(void)
 			renderer->loadProbesFromDisk();
 		ImGui::TreePop();
 	}
+	if (ImGui::TreeNode("Reflections")) {
+		ImGui::Checkbox("Planar reflection", &renderer->planar_reflection);
+		ImGui::Checkbox("Render reflection probes", &renderer->render_reflection_probes);
+		ImGui::Checkbox("Scene reflection", &renderer->scene_reflection);
+		if (ImGui::Button("Generate probes"))
+			renderer->generateReflectionProbes(scene);
+		ImGui::TreePop();
+	}
 
 	//add info to the debug panel about the camera
 	if (ImGui::TreeNode(camera, "Camera")) {
@@ -325,7 +341,6 @@ void Application::onKeyDown( SDL_KeyboardEvent event )
 		case SDLK_F1: render_debug = !render_debug; break;
 		case SDLK_f: camera->center.set(0, 0, 0); camera->updateViewMatrix(); break;
 		case SDLK_F5: Shader::ReloadAll(); break;
-		case SDLK_SPACE: renderer->generateProbes(GTR::Scene::instance); break;
 		case SDLK_F6:
 			scene->clear();
 			scene->load(scene->filename.c_str());

@@ -91,6 +91,7 @@ namespace GTR {
 		FBO* gbuffers_fbo;
 		FBO* illumination_fbo;
 		FBO* irr_fbo;
+		FBO* reflection_probe_fbo;
 		FBO* screen_fbo;
 		FBO* ssao_fbo;
 		Texture* shadowmap;
@@ -124,12 +125,14 @@ namespace GTR {
 		bool ssao;
 		bool show_probes;
 		bool show_probes_texture;
+		bool shadow_flag;
 
 		// irradiance
 		std::vector<sProbe> probes;
 		Vector3 start_irr;
 		Vector3 end_irr;
 		Vector3 dim_irr;
+		Vector3 delta_irr;
 		bool irradiance;
 		bool show_irradiance;
 
@@ -142,6 +145,10 @@ namespace GTR {
 
 		// reflections
 		FBO* reflection_fbo;
+		bool is_rendering_reflections;
+		bool planar_reflection;
+		bool render_reflection_probes;
+		bool scene_reflection;
 
 		Renderer();
 
@@ -167,7 +174,7 @@ namespace GTR {
 		void renderScene(GTR::Scene* scene, Camera* camera);
 		void renderSceneWithReflection(Scene* scene, Camera* camera);
 		// to render the scene using rendercalls vector
-		void renderScene_RenderCalls(GTR::Scene* scene, Camera* camera, bool renderToScreen = true);
+		void renderScene_RenderCalls(GTR::Scene* scene, Camera* camera, FBO* fboToRender);
 		//to render a whole prefab (with all its nodes)
 		void renderPrefab(const Matrix44& model, GTR::Prefab* prefab, Camera* camera);
 		//to render one node from the prefab and its children
@@ -179,7 +186,7 @@ namespace GTR {
 		void renderMeshWithMaterialToGBuffers(const Matrix44 model, Mesh* mesh, GTR::Material* material, Camera* camera);
 		// to render flat objects for generating the shadowmaps
 		void renderFlatMesh(const Matrix44 model, Mesh* mesh, GTR::Material* material, Camera* camera);
-		void renderForward(Camera* camera, bool renderToScreen = true);
+		void renderForward(Camera* camera, FBO* fboToRender);
 		void renderDeferred(Camera* camera);
 
 		void renderSkybox(Camera* camera);
@@ -205,12 +212,16 @@ namespace GTR {
 		void setLightsInvisible();
 		void renderInMenu();
 		
-		void renderProbe(Vector3 pos, float size, float* coeffs);
-		void captureProbe(sProbe& probe, Scene* scene);
+		void renderIrradianceProbe(Vector3 pos, float size, float* coeffs);
+		void captureIrradianceProbe(sProbe& probe, Scene* scene);
 		void saveProbesToDisk();
 		bool loadProbesFromDisk();
 		void computeIrradianceDeferred(Matrix44 inv_vp);
-		void computeIrradianceForward(Matrix44 model, Material* material, Camera* camera, int i);
+		void computeIrradianceForward(Mesh* mesh, Matrix44 model, Material* material, Camera* camera, int i);
+		
+		void generateReflectionProbes(Scene* scene);
+		void renderReflectionProbes(Scene* scene, Camera* camera);
+		void captureReflectionProbe(Scene* scene, Texture* tex, Vector3 pos);
 };
 
 	Texture* CubemapFromHDRE(const char* filename);
