@@ -37,6 +37,7 @@ GTR::Renderer::Renderer()
 	probes_texture = NULL;
 	width_shadowmap = 2048;
 	height_shadowmap = 2048;
+	irradiance_texture = NULL;
 
 	// Debug parameters
 	show_shadowmap = false;
@@ -106,6 +107,10 @@ void Renderer::generateProbes(Scene* scene){
 
 	//lets compute the centers
 	//pay attention at the order at which we add them
+
+	//int x = -80;
+	//int y = 50;
+	//int z = 13;
 		for (int z = 0; z < dim_irr.z; ++z)
 			for (int y = 0; y < dim_irr.y; ++y)
 				for (int x = 0; x < dim_irr.x; ++x)
@@ -116,6 +121,7 @@ void Renderer::generateProbes(Scene* scene){
 					p.index = x + y * dim_irr.x + z * dim_irr.x * dim_irr.y;
 					//and its position
 					p.pos = start_irr + delta_irr * Vector3(x, y, z);
+					//p.pos = Vector3(x, y, z);
 					probes.push_back(p);
 				}
 
@@ -438,6 +444,7 @@ void Renderer::renderSceneWithReflection(Scene* scene, Camera* camera) {
 
 // To render the scene according to the rendercalls vector
 void Renderer::renderScene_RenderCalls(GTR::Scene* scene, Camera* camera, FBO* fboToRender) {
+
 	//set the clear color (the background color)
 	glClearColor(scene->background_color.x, scene->background_color.y, scene->background_color.z, 1.0);
 
@@ -446,7 +453,6 @@ void Renderer::renderScene_RenderCalls(GTR::Scene* scene, Camera* camera, FBO* f
 	checkGLErrors();
 
 	renderSkybox(camera);
-
 
 	// Create the lights vector
 	lights.clear();
@@ -827,18 +833,22 @@ void GTR::Renderer::renderForward(Camera* camera, FBO* fboToRender = NULL)
 
 	if (typeOfRender == eRenderPipeline::MULTIPASS) {
 		// take the texture from the fbo and store it in another variable
-		GLint drawFboId = 0, readFboId = 0;
-		glGetIntegerv(GL_DRAW_FRAMEBUFFER_BINDING, &drawFboId);
-		glGetIntegerv(GL_READ_FRAMEBUFFER_BINDING, &readFboId);
+		// TO KNOW WHICH FBO IS BINDED
+		//GLint drawFboId = 0, readFboId = 0;
+		//glGetIntegerv(GL_DRAW_FRAMEBUFFER_BINDING, &drawFboId);
+		//glGetIntegerv(GL_READ_FRAMEBUFFER_BINDING, &readFboId);
 		screen_texture = screen_fbo->color_textures[0];
-		if (fboToRender == NULL)
-			fboToRender = screen_fbo;
-		
-		fboToRender->bind();
 
-		glClearColor(scene->background_color.x, scene->background_color.y, scene->background_color.z, 1.0);
-		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 	}
+	if (fboToRender == NULL)
+		fboToRender = screen_fbo;
+		
+	fboToRender->bind();
+
+	glClearColor(scene->background_color.x, scene->background_color.y, scene->background_color.z, 1.0);
+	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+
+	renderSkybox(camera);
 
 	//render rendercalls
 	for (int i = 0; i < render_calls.size(); ++i) {
@@ -1645,6 +1655,8 @@ void Renderer::captureIrradianceProbe(sProbe& probe, Scene* scene) {
 	//set the fov to 90 and the aspect to 1
 	cam.setPerspective(90, 1, 0.1, 1000); 
 
+	irradiance_texture = irr_fbo->color_textures[0];
+
 	for (int i = 0; i < 6; ++i) //for every cubemap face
 	{
 		//compute camera orientation using defined vectors
@@ -1666,6 +1678,7 @@ void Renderer::captureIrradianceProbe(sProbe& probe, Scene* scene) {
 		//read the pixels back and store in a FloatImage
 		images[i].fromTexture(irr_fbo->color_textures[0]);
 	}
+
 
 	//compute the coefficients given the six images
 	probe.sh = computeSH(images);

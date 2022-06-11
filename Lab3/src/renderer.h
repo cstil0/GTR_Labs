@@ -97,6 +97,8 @@ namespace GTR {
 		Texture* shadowmap;
 		Texture* screen_texture;
 		Texture* probes_texture;
+		// debuging use -- borrar
+		Texture* irradiance_texture;
 		int width_shadowmap; 
 		int height_shadowmap;
 
@@ -152,7 +154,7 @@ namespace GTR {
 
 		Renderer();
 
-		// -- Rendercalls manager functions--
+		// -- Rendercalls manager functions --
 
 		void createRenderCalls(GTR::Scene* scene, Camera* camera);
 		void addRenderCall_node(GTR::Scene* scene, Camera* camera, Node* node, Matrix44 curr_model, Matrix44 parent_model);
