@@ -506,9 +506,9 @@ void Renderer::renderScene_RenderCalls(GTR::Scene* scene, Camera* camera, FBO* f
 	if (show_probes_texture && probes_texture)
 		probes_texture->toViewport();
 
-	if (render_reflection_probes) {
-		renderReflectionProbes(scene, camera);
-	}
+	//if (render_reflection_probes) {
+	//	renderReflectionProbes(scene, camera);
+	//}
 
 }
 
