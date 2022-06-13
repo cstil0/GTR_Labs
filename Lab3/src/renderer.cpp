@@ -92,7 +92,10 @@ GTR::Renderer::Renderer()
 // LO BUENO QUE TIENE EL BLOQUE DE MEMORIA DE LAS PROBES ES QUE LAS TENEMOS TODAS COLINDANTES, DE FORMA QUE PARA EVITAR GENERARLAS CADA VEZ
 // PODEMOS GUARDARLAS COMO BINARIO EN EL DISCO Y RECUPERARLAS FACILMENTE
 void Renderer::generateProbes(Scene* scene){
-	probes.resize(0);
+	probes.clear();
+	glClearColor(0.0, 0.0, 0.0, 1.0);
+	glClear(GL_COLOR_BUFFER_BIT);
+
 	//when computing the probes position… define the corners of the axis aligned grid this can be done using the boundings of our scene
 	start_irr = Vector3(-300, 5, -400);
 	end_irr = Vector3(300, 150, 400);
@@ -113,62 +116,66 @@ void Renderer::generateProbes(Scene* scene){
 	//int x = -80;
 	//int y = 50;
 	//int z = 13;
-		for (int z = 0; z < dim_irr.z; ++z)
-			for (int y = 0; y < dim_irr.y; ++y)
-				for (int x = 0; x < dim_irr.x; ++x)
-				{
-					sProbe p;
-					p.local.set(x, y, z);
-					//index in the linear array
-					p.index = x + y * dim_irr.x + z * dim_irr.x * dim_irr.y;
-					//and its position
-					p.pos = start_irr + delta_irr * Vector3(x, y, z);
-					//p.pos = Vector3(x, y, z);
-					probes.push_back(p);
-				}
-
-		std::cout << std::endl;
-		//now compute the coeffs for every probe
-		for (int iP = 0; iP < probes.size(); ++iP)
+	for (int z = 0; z < dim_irr.z; ++z)
+	{
+		for (int y = 0; y < dim_irr.y; ++y)
 		{
-			int probe_index = iP;
-			captureIrradianceProbe(probes[iP], scene);
-			// EL CARACTER \R HACE QUE VUELVA AL PRINCIPIO, EN LUGAR DE VOLVER A PRINTAR TODA LA LINEA ABAJO
-			std::cout << "Generating probes: " << iP << "/" << probes.size() << "\r";
+			for (int x = 0; x < dim_irr.x; ++x)
+			{
+				sProbe p;
+				p.local.set(x, y, z);
+				//index in the linear array
+				p.index = x + y * dim_irr.x + z * dim_irr.x * dim_irr.y;
+				//and its position
+				p.pos = start_irr + delta_irr * Vector3(x, y, z);
+				//p.pos = Vector3(x, y, z);
+				probes.push_back(p);
+			}
 		}
-		std::cout << std::endl;
-		std::cout << "DONE" << std::endl;
+	}
+
+	std::cout << std::endl;
+	//now compute the coeffs for every probe
+	for (int iP = 0; iP < probes.size(); ++iP)
+	{
+		int probe_index = iP;
+		captureIrradianceProbe(probes[iP], scene);
+		// EL CARACTER \R HACE QUE VUELVA AL PRINCIPIO, EN LUGAR DE VOLVER A PRINTAR TODA LA LINEA ABAJO
+		std::cout << "Generating probes: " << iP << "/" << probes.size() << "\r";
+	}
+	std::cout << std::endl;
+	std::cout << "DONE" << std::endl;
 
 
-		//create the texture to store the probes (do this ONCE!!!)
-		// SI NO ES NULO ELIMINAMOS LA TEXTURA Y LA VOLVEMOS A CREAR PARA PODER CAMBIAR EL TAMAÑO SI VAMOS A AÑADIR MÁS PROBES
-		// DE ESTA FORMA PODRÍAMOS EDITAR EL NUMERO DESDE EL EDITOR
-		if(probes_texture != NULL)
-			delete probes_texture;
+	//create the texture to store the probes (do this ONCE!!!)
+	// SI NO ES NULO ELIMINAMOS LA TEXTURA Y LA VOLVEMOS A CREAR PARA PODER CAMBIAR EL TAMAÑO SI VAMOS A AÑADIR MÁS PROBES
+	// DE ESTA FORMA PODRÍAMOS EDITAR EL NUMERO DESDE EL EDITOR
+	if(probes_texture != NULL)
+		delete probes_texture;
 
-		probes_texture = new Texture(
-			9, //9 coefficients per probe
-			probes.size(), //as many rows as probes
-			GL_RGB, //3 channels per coefficient
-			GL_FLOAT); //they require a high range
-			//we must create the color information for the texture. because every
-		//SH are 27 floats in the RGB, RGB, ... order, we can create an array of
-		//SphericalHarmonics and use it as pixels of the texture
-		SphericalHarmonics* sh_data = NULL;
-		// ESTO ES UN ARRAY DE LOS 9 COEFICIENTES DE CADA PROBE QUE MIDE ANCHO POR ALTO POR PROFUNDIDAD
-		sh_data = new SphericalHarmonics[dim_irr.x * dim_irr.y * dim_irr.z];
-		//here we fill the data of the array with our probes in x,y,z order
-		for (int i = 0; i < probes.size(); ++i)
-			sh_data[i] = probes[i].sh;
-		//now upload the data to the GPU as a texture
-		probes_texture->upload(GL_RGB, GL_FLOAT, false, (uint8*)sh_data);
-		//disable any texture filtering when reading
-		probes_texture->bind();
-		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-		//always free memory after allocating it!!!
-		delete[] sh_data;
-		probes_texture->unbind();
+	probes_texture = new Texture(
+		9, //9 coefficients per probe
+		probes.size(), //as many rows as probes
+		GL_RGB, //3 channels per coefficient
+		GL_FLOAT); //they require a high range
+		//we must create the color information for the texture. because every
+	//SH are 27 floats in the RGB, RGB, ... order, we can create an array of
+	//SphericalHarmonics and use it as pixels of the texture
+	SphericalHarmonics* sh_data = NULL;
+	// ESTO ES UN ARRAY DE LOS 9 COEFICIENTES DE CADA PROBE QUE MIDE ANCHO POR ALTO POR PROFUNDIDAD
+	sh_data = new SphericalHarmonics[dim_irr.x * dim_irr.y * dim_irr.z];
+	//here we fill the data of the array with our probes in x,y,z order
+	for (int i = 0; i < probes.size(); ++i)
+		sh_data[i] = probes[i].sh;
+	//now upload the data to the GPU as a texture
+	probes_texture->upload(GL_RGB, GL_FLOAT, false, (uint8*)sh_data);
+	//disable any texture filtering when reading
+	probes_texture->bind();
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+	//always free memory after allocating it!!!
+	delete[] sh_data;
+	probes_texture->unbind();
 
 
 	//probe.sh.coeffs[0].set(1, 0, 0);
@@ -1798,15 +1805,13 @@ void Renderer::computeIrradianceForward(Mesh* mesh, Matrix44 model, Material* ma
 
 	Texture* normal = material->normal_texture.texture;
 	Texture* color = material->color_texture.texture;
-	if (!color)
-		int l = 0;
+	
 	shader_irr->enable();
 	
-	if (color)
+	if (color && !show_irradiance)
 		shader_irr->setUniform("u_texture", color, 0);
 	else
-		shader_irr->setUniform("u_texture", Texture::getWhiteTexture()); //a 1x1 white texture
-
+		shader_irr->setUniform("u_texture", Texture::getWhiteTexture(), 0); //a 1x1 white texture
 
 	shader_irr->setUniform("u_camera_position", camera->eye);
 	shader_irr->setUniform("u_viewprojection", camera->viewprojection_matrix);
@@ -1821,7 +1826,7 @@ void Renderer::computeIrradianceForward(Mesh* mesh, Matrix44 model, Material* ma
 	else
 		shader_irr->setUniform("u_normal_text_bool", 0);
 
-	shader_irr->setUniform("u_irr_texture", probes_texture, 6);
+	shader_irr->setUniform("u_irr_texture", probes_texture, 2);
 	shader_irr->setUniform("u_irr_start", start_irr);
 	shader_irr->setUniform("u_irr_end", end_irr);
 	shader_irr->setUniform("u_irr_dim", dim_irr);
