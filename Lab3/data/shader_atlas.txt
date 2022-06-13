@@ -47,9 +47,10 @@ uniform sampler2D u_met_rough_texture;
 uniform float u_metallic_factor;
 uniform float u_roughness_factor;
 uniform vec3 u_emissive_factor;
-uniform int u_has_reflections;
-uniform sampler2D u_reflections_texture;
 
+uniform samplerCube u_skybox_texture;
+uniform int u_has_planar_reflections;
+uniform sampler2D u_planar_reflections_texture;
 
 \gbuffer_texture_uniforms
 
@@ -791,16 +792,25 @@ void main()
 	uv_screen.x = 1.0 - uv_screen.x;
 
 	vec4 texture_color = texture( u_texture, v_uv );
-	vec3 reflection_color = vec3(0.0);
+	vec4 met_rough = texture(u_met_rough_texture, uv);
+
+	vec3 planar_reflection_color = vec3(0.0);
 	// CONTROLAMOS EL CASO EN EL QUE UNA MESH ESTÁ POR DEBAJO DEL SUELO, PARA QUE LA FLIPPED_CAMERA NO LO PINTE
-	if (u_has_reflections == 0 && v_world_position.y < 0)
+	if (u_has_planar_reflections == 0 && v_world_position.y < 0)
 		discard;
 
 	// AHORA ESTAMOS MIRANDO QUE SOLO EL SUELO REFLECTE VIENDO LA ALTURA DEL PIXEL, PERO ES UN POCO CUTRE
-	if (u_has_reflections == 1 && abs(v_world_position.y) < 0.1)
-		reflection_color = texture(u_reflections_texture, uv_screen).xyz;
+	if (u_has_planar_reflections == 1 && abs(v_world_position.y) < 0.1)
+		planar_reflection_color = texture(u_planar_reflections_texture, uv_screen).xyz;
 	vec3 light = u_ambient_light;
 	vec3 light_color = u_light_color;
+
+	// V YA SE CALCULA DENTRO DE LAS FUNCIONES POINT, SPOT.. HAY QUE REVISARLO
+	LightComp.V = normalize(v_world_position - u_camera_position);
+	computeN(LightComp);
+	LightComp.R = reflect(LightComp.V, LightComp.N);
+
+	vec3 reflection_color = texture(u_skybox_texture, LightComp.R).xyz;
 
 	// Emissive
 	vec3 emissive = texture( u_emissive_texture, v_uv ).xyz;
@@ -811,13 +821,17 @@ void main()
 		light = degamma(vec3(light));
 		light_color = degamma(light_color);
 		emissive = degamma(emissive + u_emissive_factor);
+		planar_reflection_color = degamma(planar_reflection_color);
 		reflection_color = degamma(reflection_color);
 	}
 
 	color *= texture_color;
-	if (u_has_reflections == 1 && abs(v_world_position.y) < 0.1)
-		color.xyz = mix(color.xyz, reflection_color, 0.5);
-	//color.xyz *= reflection_color;
+	if (u_has_planar_reflections == 1 && abs(v_world_position.y) < 0.1)
+		color.xyz = mix(color.xyz, planar_reflection_color, 0.5);
+
+	float reflection_factor = met_rough.z;
+	color.xyz = mix(color.xyz, reflection_color, reflection_factor);
+	//color.xyz *= planar_reflection_color;
 
 	if(color.a < u_alpha_cutoff)
 		discard;
@@ -838,9 +852,9 @@ void main()
 		computeL_directional(LightComp);
 	}
 
-	computeN(LightComp);
 
 	computeNdotL(LightComp);
+
 
 	if (u_light_cast_shadows == 1){
 		testShadowMap(LightComp);
@@ -1902,7 +1916,11 @@ out vec4 FragColor;
 void main()
 {
 	vec3 V = v_world_position - u_camera_pos;
-	FragColor = texture(u_texture, V);
+	vec3 N = normalize(v_normal);
+	vec3 R = reflect(V, N);
+	// TEXTURE LOD HACE QUE EL MITMMAP QUE SE USE SEA SIEMPRE EL MISMO Y NO SE BAJE EN FUNCIÓN DE LA DISTANCIA
+	// Y EL NUMERO DEL FINAL ES EL MITMAP EN EL QUE ESTAMOS. CUANTO MÁS ALTO MÁS BLURREADO ESTARÁ -- BAJAMOS DE MITMAO 
+	FragColor = textureLod(u_texture, R, 1.0);
 }
 
 

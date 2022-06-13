@@ -148,9 +148,11 @@ namespace GTR {
 		// reflections
 		FBO* reflection_fbo;
 		bool is_rendering_reflections;
+		bool is_rendering_planar_reflections;
 		bool planar_reflection;
 		bool render_reflection_probes;
 		bool scene_reflection;
+		ReflectionProbeEntity* probe;
 
 		Renderer();
 

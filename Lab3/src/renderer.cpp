@@ -84,6 +84,8 @@ GTR::Renderer::Renderer()
 	planar_reflection = false;
 	render_reflection_probes = false;
 	scene_reflection = false;
+	// JAVI DICE QUE ESTO EN LAS SLIDES ESTÁ DIFERENTE POR QUÉ AHI LAS PROBES SE CREAN POR CODIGO (?) -- REVISAR
+	probe = NULL;
 	//generateProbes(Scene::instance);
 }
 
@@ -428,11 +430,11 @@ void Renderer::renderSceneWithReflection(Scene* scene, Camera* camera) {
 	flipped_camera.setPerspective(camera->fov, camera->aspect, camera->near_plane, camera->far_plane);
 	flipped_camera.enable();
 
-	is_rendering_reflections = true;
+	is_rendering_planar_reflections = true;
 	renderScene_RenderCalls(scene, &flipped_camera, reflection_fbo);
 	//screen_fbo->unbind();
 	//reflection_fbo->unbind();
-	is_rendering_reflections = false;
+	is_rendering_planar_reflections = false;
 
 	camera->enable();
 	renderScene_RenderCalls(scene, camera, screen_fbo);
@@ -597,7 +599,10 @@ void Renderer::renderMeshWithMaterial(const Matrix44 model, Mesh* mesh, GTR::Mat
 
 	//this is used to say which is the alpha threshold to what we should not paint a pixel on the screen (to cut polygons according to texture alpha)
 	shader->setUniform("u_alpha_cutoff", material->alpha_mode == GTR::eAlphaMode::MASK ? material->alpha_cutoff : 0);
-
+	
+	// POR DEFECTO, LA TEXTURA DE REFLECTION SERÁ LA DEL SKYBOX
+	Texture* reflection = skybox;
+	shader->setUniform("u_skybox_texture", reflection, 8);
 
 	// pass light parameters
 	if (typeOfRender == eRenderPipeline::SINGLEPASS) {
@@ -608,9 +613,7 @@ void Renderer::renderMeshWithMaterial(const Matrix44 model, Mesh* mesh, GTR::Mat
 	else if (typeOfRender == eRenderPipeline::MULTIPASS) {
 		setMultipassParameters(material, shader, mesh);
 		shader->disable();
-
 	}
-
 
 	if (irradiance && probes_texture)
 		computeIrradianceForward(mesh, model, material, camera, i);
@@ -1277,12 +1280,12 @@ void Renderer::setTextures(GTR::Material* material, Shader* shader) {
 	if (texture)
 		shader->setUniform("u_texture", texture, 0);
 
-	if (!is_rendering_reflections) {
-		shader->setUniform("u_has_reflections", 1);
-		shader->setUniform("u_reflections_texture", reflection_fbo->color_textures[0], 5);
+	if (!is_rendering_planar_reflections) {
+		shader->setUniform("u_has_planar_reflections", 1);
+		shader->setUniform("u_planar_reflections_texture", reflection_fbo->color_textures[0], 5);
 	}
 	else
-		shader->setUniform("u_has_reflections", 0);
+		shader->setUniform("u_has_planar_reflections", 0);
 
 	if (occlusion_texture)
 		shader->setUniform("u_occlusion_texture", occlusion_texture, 2);
@@ -1832,8 +1835,10 @@ void Renderer::computeIrradianceForward(Mesh* mesh, Matrix44 model, Material* ma
 	shader_irr->disable();
 }
 
-void GTR::Renderer::generateReflectionProbes(Scene* scene)
-{
+void GTR::Renderer::generateReflectionProbes(Scene* scene){
+	if (reflection_fbo == NULL)
+		reflection_fbo->create(Application::instance->window_width, Application::instance->window_height, 1, GL_RGBA, GL_FLOAT, true);
+
 
 	for (int i = 0; i < scene->entities.size(); i++) {
 		BaseEntity* ent = scene->entities[i];
@@ -1843,9 +1848,10 @@ void GTR::Renderer::generateReflectionProbes(Scene* scene)
 
 		if (!probe->texture) {
 			probe->texture = new Texture();
-			probe->texture->createCubemap(256, 256);
+			probe->texture->createCubemap(256, 256, NULL, GL_RGB, GL_UNSIGNED_INT, false);
 		}
 		captureReflectionProbe(scene, probe->texture, probe->model.getTranslation());
+		this->probe = probe;
 	}
 
 }
@@ -1859,8 +1865,11 @@ void GTR::Renderer::renderReflectionProbes(Scene* scene, Camera* camera)
 	shader->setUniform("u_viewprojection", camera->viewprojection_matrix);
 	shader->setUniform("u_camera_pos", camera->eye);
 
-	glDisable(GL_CULL_FACE);
-	glDisable(GL_DEPTH_TEST);
+	glEnable(GL_CULL_FACE);
+	glEnable(GL_DEPTH_TEST);
+
+	// ESTO ES PARA HACER COMO UN BLURREADO EN LOS BORDES DEL CUBEMAP Y QUE NO SE VEAN ARTEFACTOS
+	glEnable(GL_TEXTURE_CUBE_MAP_SEAMLESS);
 
 	// ES MEJOR GUARDAR LAS REFLECTION PROBES A PARTE CUANDO SACAMOS LOS RENDER CALLS EN UN VECTOR
 	for (int i = 0; i < scene->entities.size(); i++) {
@@ -1872,6 +1881,8 @@ void GTR::Renderer::renderReflectionProbes(Scene* scene, Camera* camera)
 			continue;
 
 		//model.setTranslation(0, 0, 0);
+		Matrix44 model = ent->model;
+		model.scale(10, 10, 10);
 
 		shader->setUniform("u_model", ent->model);
 		shader->setUniform("u_texture", probe->texture, 0);
@@ -1906,9 +1917,16 @@ void GTR::Renderer::captureReflectionProbe(Scene* scene, Texture* tex, Vector3 p
 		probe_camera.lookAt(eye, center, up);
 		probe_camera.enable();
 
+		reflection_probe_fbo->bind();
+		is_rendering_reflections = true;
 		renderScene_RenderCalls(scene, &probe_camera, reflection_probe_fbo);
+		is_rendering_reflections = false;
+		reflection_probe_fbo->unbind();
 		
 	}
+	//generate the mipmaps
+	glEnable(GL_TEXTURE_CUBE_MAP_SEAMLESS);
+	tex->generateMipmaps();
 }
 
 

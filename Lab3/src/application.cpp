@@ -70,9 +70,9 @@ Application::Application(int window_width, int window_height, SDL_Window* window
 		exit(1);
 
 	// GENERAR UNA SOLA PROBE DE REFLECCIÓN PARA PROBAR
-	//GTR::ReflectionProbeEntity* probe;
-	//probe->model.setTranslation(40, 40, 40);
-	//scene->addEntity(probe);
+	GTR::ReflectionProbeEntity* probe = new GTR::ReflectionProbeEntity();
+	probe->model.setTranslation(40, 40, 40);
+	scene->addEntity(probe);
 
 	camera->lookAt(scene->main_camera.eye, scene->main_camera.center, Vector3(0, 1, 0));
 	camera->fov = scene->main_camera.fov;
