@@ -146,7 +146,6 @@ void Renderer::generateProbes(Scene* scene){
 	std::cout << std::endl;
 	std::cout << "DONE" << std::endl;
 
-
 	//create the texture to store the probes (do this ONCE!!!)
 	// SI NO ES NULO ELIMINAMOS LA TEXTURA Y LA VOLVEMOS A CREAR PARA PODER CAMBIAR EL TAMAÑO SI VAMOS A AÑADIR MÁS PROBES
 	// DE ESTA FORMA PODRÍAMOS EDITAR EL NUMERO DESDE EL EDITOR
@@ -1701,7 +1700,7 @@ void GTR::Renderer::saveProbesToDisk()
 	header.start = start_irr;
 	header.end = end_irr;
 	header.dims = dim_irr;
-	header.delta = end_irr - start_irr;
+	header.delta = delta_irr;
 	header.num_probes = dim_irr.x * dim_irr.y * dim_irr.z;
 	//write to file header and probes data
 	FILE* f = fopen("irradiance.bin", "wb");
@@ -1826,11 +1825,12 @@ void Renderer::computeIrradianceForward(Mesh* mesh, Matrix44 model, Material* ma
 	else
 		shader_irr->setUniform("u_normal_text_bool", 0);
 
+	// delta -> distancia 
 	shader_irr->setUniform("u_irr_texture", probes_texture, 2);
 	shader_irr->setUniform("u_irr_start", start_irr);
 	shader_irr->setUniform("u_irr_end", end_irr);
 	shader_irr->setUniform("u_irr_dim", dim_irr);
-	shader_irr->setUniform("u_irr_delta", end_irr - start_irr);
+	shader_irr->setUniform("u_irr_delta", delta_irr);
 	// ES UN FACTOR -- A QUE DISTANCIA QUIERO SAMPLEARLO, NO JUSTO EN EL WORLD POSITION SINO UN POCO MÁS ADELANTE (QUE?)
 	shader_irr->setUniform("u_irr_normal_distance", 0.1f);
 	// LA TEXTURA MIDE TANTO COMO EL NUMERO DE PROBES QUE HAY

@@ -1876,24 +1876,191 @@ void main()
 	
 	//convert from world pos to grid pos
 	vec3 irr_norm_pos = irr_local_pos / u_irr_delta;
-	//round values as we cannot fetch between rows for now
-	vec3 local_indices = round( irr_norm_pos );
+	//floor instead of round
+	vec3 local_indices = floor( irr_norm_pos );
+
+	//now we have the interpolation factors
+	vec3 factors = irr_norm_pos - local_indices; 
+
 	//compute in which row is the probe stored
 	float row = local_indices.x + local_indices.y * u_irr_dim.x + local_indices.z * u_irr_dim.x * u_irr_dim.y;
+
 	//find the UV.y coord of that row in the probes texture
 	float row_uv = (row + 1.0) / (u_num_probes + 1.0);
 
 	SH9Color sh;
 	//fill the coefficients
 	const float d_uvx = 1.0 / 9.0;
+	vec2 coeffs_uv;
 	for(int i = 0; i < 9; ++i)
 	{
-		vec2 coeffs_uv = vec2( (float(i)+0.5) * d_uvx, row_uv );
+		coeffs_uv = vec2( (float(i)+0.5) * d_uvx, row_uv );
 		// LEEMOS DE LA TEXTURA PROBES TEXTURE Y LLAMAMOS A LA FUNCIÓN COMPUTESHIRR
 		sh.c[i] = texture( u_irr_texture, coeffs_uv).xyz;
 	}
-	//now we can use the coefficients to compute the irradiance
-	vec3 irradiance = ComputeSHIrradiance( N, sh );
+
+	//example for right bottom far index
+	// Right, Bottom, Far
+	vec3 indicesRBF = local_indices; // BLUEPRINT
+	indicesRBF += vec3(1.0); //from left to right
+	//compute in which row is the probe stored
+	row = indicesRBF.x + indicesRBF.y * u_irr_dim.x + indicesRBF.z * u_irr_dim.x * u_irr_dim.y;
+	
+	//find the UV.y coord of that row in the probes texture
+	row_uv = (row + 1.0) / (u_num_probes + 1.0);
+
+	//fill the coefficients
+	for(int i = 0; i < 9; ++i)
+	{
+		coeffs_uv = vec2( (float(i)+0.5) * d_uvx, row_uv );
+		// LEEMOS DE LA TEXTURA PROBES TEXTURE Y LLAMAMOS A LA FUNCIÓN COMPUTESHIRR
+		sh.c[i] = texture( u_irr_texture, coeffs_uv).xyz;
+	}
+
+	vec3 irrRBF = ComputeSHIrradiance( N, sh );
+
+	// Left,Bottom,Far
+	vec3 indicesLBF = local_indices;
+	indicesLBF += vec3(-1.0, 1.0, 1.0);
+	//compute in which row is the probe stored
+	row = indicesLBF.x + indicesLBF.y * u_irr_dim.x + indicesLBF.z * u_irr_dim.x * u_irr_dim.y;
+	
+	//find the UV.y coord of that row in the probes texture
+	row_uv = (row + 1.0) / (u_num_probes + 1.0);
+
+	//fill the coefficients
+	for(int i = 0; i < 9; ++i)
+	{
+		coeffs_uv = vec2( (float(i)+0.5) * d_uvx, row_uv );
+		// LEEMOS DE LA TEXTURA PROBES TEXTURE Y LLAMAMOS A LA FUNCIÓN COMPUTESHIRR
+		sh.c[i] = texture( u_irr_texture, coeffs_uv).xyz;
+	}
+
+	vec3 irrLBF = ComputeSHIrradiance( N, sh );
+
+	// Right,Top,Far
+	vec3 indicesRTF = local_indices;
+	indicesRTF += vec3(1.0, -1.0, 1.0); //from left to right
+	//compute in which row is the probe stored
+	row = indicesRTF.x + indicesRTF.y * u_irr_dim.x + indicesRTF.z * u_irr_dim.x * u_irr_dim.y;
+	
+	//find the UV.y coord of that row in the probes texture
+	row_uv = (row + 1.0) / (u_num_probes + 1.0);
+
+	//fill the coefficients
+	for(int i = 0; i < 9; ++i)
+	{
+		coeffs_uv = vec2( (float(i)+0.5) * d_uvx, row_uv );
+		// LEEMOS DE LA TEXTURA PROBES TEXTURE Y LLAMAMOS A LA FUNCIÓN COMPUTESHIRR
+		sh.c[i] = texture( u_irr_texture, coeffs_uv).xyz;
+	}
+
+	vec3 irrRTF = ComputeSHIrradiance( N, sh );
+
+	// Left,Top,Far
+	vec3 indicesLTF = local_indices;
+	indicesLTF += vec3(-1.0, -1.0, 1.0); //from left to right
+	//compute in which row is the probe stored
+	row = indicesLTF.x + indicesLTF.y * u_irr_dim.x + indicesLTF.z * u_irr_dim.x * u_irr_dim.y;
+	
+	//find the UV.y coord of that row in the probes texture
+	row_uv = (row + 1.0) / (u_num_probes + 1.0);
+
+	//fill the coefficients
+	for(int i = 0; i < 9; ++i)
+	{
+		coeffs_uv = vec2( (float(i)+0.5) * d_uvx, row_uv );
+		// LEEMOS DE LA TEXTURA PROBES TEXTURE Y LLAMAMOS A LA FUNCIÓN COMPUTESHIRR
+		sh.c[i] = texture( u_irr_texture, coeffs_uv).xyz;
+	}
+
+	vec3 irrLTF = ComputeSHIrradiance( N, sh );
+
+	// Right, Bottom,Close
+	vec3 indicesRBN = local_indices; // BLUEPRINT
+	indicesRBN += vec3(1.0, 1.0, -1.0); //from left to right
+	//compute in which row is the probe stored
+	row = indicesRBN.x + indicesRBN.y * u_irr_dim.x + indicesRBN.z * u_irr_dim.x * u_irr_dim.y;
+	
+	//find the UV.y coord of that row in the probes texture
+	row_uv = (row + 1.0) / (u_num_probes + 1.0);
+
+	//fill the coefficients
+	for(int i = 0; i < 9; ++i)
+	{
+		coeffs_uv = vec2( (float(i)+0.5) * d_uvx, row_uv );
+		// LEEMOS DE LA TEXTURA PROBES TEXTURE Y LLAMAMOS A LA FUNCIÓN COMPUTESHIRR
+		sh.c[i] = texture( u_irr_texture, coeffs_uv).xyz;
+	}
+
+	vec3 irrRBN = ComputeSHIrradiance( N, sh );
+
+	// Left,Bottom,Close
+	vec3 indicesLBN = local_indices;
+	indicesLBN = indicesLBF + vec3(-1.0, 1.0, -1.0);
+	//compute in which row is the probe stored
+	row = indicesLBN.x + indicesLBN.y * u_irr_dim.x + indicesLBN.z * u_irr_dim.x * u_irr_dim.y;
+	
+	//find the UV.y coord of that row in the probes texture
+	row_uv = (row + 1.0) / (u_num_probes + 1.0);
+
+	//fill the coefficients
+	for(int i = 0; i < 9; ++i)
+	{
+		coeffs_uv = vec2( (float(i)+0.5) * d_uvx, row_uv );
+		// LEEMOS DE LA TEXTURA PROBES TEXTURE Y LLAMAMOS A LA FUNCIÓN COMPUTESHIRR
+		sh.c[i] = texture( u_irr_texture, coeffs_uv).xyz;
+	}
+
+	vec3 irrLBN = ComputeSHIrradiance( N, sh );
+
+	// Right,Top,Close
+	vec3 indicesRTN = local_indices;
+	indicesRTN += vec3(1.0, -1.0, -1.0); //from left to right
+	//compute in which row is the probe stored
+	row = indicesRTN.x + indicesRTN.y * u_irr_dim.x + indicesRTN.z * u_irr_dim.x * u_irr_dim.y;
+	
+	//find the UV.y coord of that row in the probes texture
+	row_uv = (row + 1.0) / (u_num_probes + 1.0);
+
+	//fill the coefficients
+	for(int i = 0; i < 9; ++i)
+	{
+		coeffs_uv = vec2( (float(i)+0.5) * d_uvx, row_uv );
+		// LEEMOS DE LA TEXTURA PROBES TEXTURE Y LLAMAMOS A LA FUNCIÓN COMPUTESHIRR
+		sh.c[i] = texture( u_irr_texture, coeffs_uv).xyz;
+	}
+
+	vec3 irrRTN = ComputeSHIrradiance( N, sh );
+
+	// Left,Top,Close
+	vec3 indicesLTN = local_indices;
+	indicesLTN += vec3(-1.0); //from left to right
+	//compute in which row is the probe stored
+	row = indicesLTN.x + indicesLTN.y * u_irr_dim.x + indicesLTN.z * u_irr_dim.x * u_irr_dim.y;
+	
+	//find the UV.y coord of that row in the probes texture
+	row_uv = (row + 1.0) / (u_num_probes + 1.0);
+
+	//fill the coefficients
+	for(int i = 0; i < 9; ++i)
+	{
+		coeffs_uv = vec2( (float(i)+0.5) * d_uvx, row_uv );
+		// LEEMOS DE LA TEXTURA PROBES TEXTURE Y LLAMAMOS A LA FUNCIÓN COMPUTESHIRR
+		sh.c[i] = texture( u_irr_texture, coeffs_uv).xyz;
+	}
+
+	vec3 irrLTN = ComputeSHIrradiance( N, sh );
+
+	vec3 irrTF = mix( irrLTF, irrRTF, factors.x );
+	vec3 irrBF = mix( irrLBF, irrRBF, factors.x );
+	vec3 irrTN = mix( irrLTN, irrRTN, factors.x );
+	vec3 irrBN = mix( irrLBN, irrRBN, factors.x );
+
+	vec3 irrT = mix( irrTF, irrTN, factors.z );
+	vec3 irrB = mix( irrBF, irrBN, factors.z );
+
+	vec3 irradiance = mix( irrB, irrT, factors.y );
 
 	color.xyz *= irradiance;
 	FragColor = vec4(color);
