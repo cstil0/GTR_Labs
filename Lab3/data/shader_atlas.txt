@@ -846,7 +846,7 @@ void main()
 	vec3 reflection_color = vec3(0.0);
 	if (u_scene_reflections == 1){
 		// BAJAMOS 4 VALORES SEGUN EL ROUGHNESS PARA QUE ALGUNAS PARTES REFLEJEN MÁS MATE
-		reflection_color = textureLod(u_skybox_texture, LightComp.R, met_rough.z * 4.0).xyz;
+		reflection_color = textureLod(u_skybox_texture, LightComp.R, met_rough.y * 4.0).xyz;
 		//reflection_color = texture(u_skybox_texture, LightComp.R).xyz;
 	}
 
@@ -867,7 +867,7 @@ void main()
 
 	if (u_scene_reflections == 1){
 		//float reflection_factor = 1.0;
-		float reflection_factor = met_rough.y + u_metallic_factor;
+		float reflection_factor = met_rough.z + u_metallic_factor;
 		color.xyz = mix(color.xyz, reflection_color, reflection_factor);
 	}
 
@@ -1297,8 +1297,8 @@ void main()
 
 	computeN(LightComp);
 
-	float metalness = met_rough.y + u_metallic_factor;
-	float roughness = met_rough.z + u_roughness_factor;
+	float metalness = met_rough.z + u_metallic_factor;
+	float roughness = met_rough.y + u_roughness_factor;
 
 	vec3 planar_reflection_color = vec3(0.0);
 	if (u_has_planar_reflections == 0 && v_world_position.y < 0)
