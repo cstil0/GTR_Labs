@@ -49,6 +49,7 @@ uniform float u_roughness_factor;
 uniform vec3 u_emissive_factor;
 
 uniform samplerCube u_skybox_texture;
+uniform int u_scene_reflections;
 uniform int u_has_planar_reflections;
 uniform sampler2D u_planar_reflections_texture;
 
@@ -224,6 +225,36 @@ void testShadowMap(inout LightStruct lc){
 	if(real_depth < 0.0 || real_depth > 1.0)
 		lc.shadow_factor = 1.0;
 
+}
+
+vec3 computeLight(inout LightStruct lc, vec3 light_color){
+	// Point
+	if (u_light_type == 1){
+		computeL_point(lc);
+	}
+
+	// Spot
+	else if (u_light_type == 2){
+		computeL_point(lc);
+		computeSpotFactor(lc);
+	}
+
+	// Directional
+	else if (u_light_type == 3){
+		computeL_directional(lc);
+	}
+
+
+	computeNdotL(lc);
+
+
+	if (u_light_cast_shadows == 1){
+		testShadowMap(lc);
+	}
+
+	computeAttenuation(lc);
+	vec3 light = light_color * lc.NdotL * lc.att_factor * lc.spot_factor * lc.shadow_factor;
+	return light;
 }
 
 \light_functions_single
@@ -793,6 +824,7 @@ void main()
 
 	vec4 texture_color = texture( u_texture, v_uv );
 	vec4 met_rough = texture(u_met_rough_texture, uv);
+	vec3 emissive = texture( u_emissive_texture, v_uv ).xyz;
 
 	vec3 planar_reflection_color = vec3(0.0);
 	// CONTROLAMOS EL CASO EN EL QUE UNA MESH ESTÁ POR DEBAJO DEL SUELO, PARA QUE LA FLIPPED_CAMERA NO LO PINTE
@@ -802,6 +834,7 @@ void main()
 	// AHORA ESTAMOS MIRANDO QUE SOLO EL SUELO REFLECTE VIENDO LA ALTURA DEL PIXEL, PERO ES UN POCO CUTRE
 	if (u_has_planar_reflections == 1 && abs(v_world_position.y) < 0.1)
 		planar_reflection_color = texture(u_planar_reflections_texture, uv_screen).xyz;
+	
 	vec3 light = u_ambient_light;
 	vec3 light_color = u_light_color;
 
@@ -810,16 +843,18 @@ void main()
 	computeN(LightComp);
 	LightComp.R = reflect(LightComp.V, LightComp.N);
 
-	// BAJAMOS 4 VALORES SEGUN EL ROUGHNESS PARA QUE ALGUNAS PARTES REFLEJEN MÁS MATE
-	vec3 reflection_color = texture(u_skybox_texture, LightComp.R, met_rough.y * 4.0).xyz;
-	
-	// Emissive
-	vec3 emissive = texture( u_emissive_texture, v_uv ).xyz;
+	vec3 reflection_color = vec3(0.0);
+	if (u_scene_reflections == 1){
+		// BAJAMOS 4 VALORES SEGUN EL ROUGHNESS PARA QUE ALGUNAS PARTES REFLEJEN MÁS MATE
+		reflection_color = textureLod(u_skybox_texture, LightComp.R, met_rough.y * 4.0).xyz;
+		//reflection_color = texture(u_skybox_texture, LightComp.R).xyz;
+	}
+
 
 	if (u_gamma == 1){
 		color.xyz = degamma(u_color.xyz);
 		texture_color.xyz = degamma(texture_color.xyz);
-		light = degamma(vec3(light));
+		light = degamma(light);
 		light_color = degamma(light_color);
 		emissive = degamma(emissive + u_emissive_factor);
 		planar_reflection_color = degamma(planar_reflection_color);
@@ -830,49 +865,26 @@ void main()
 	if (u_has_planar_reflections == 1 && abs(v_world_position.y) < 0.1)
 		color.xyz = mix(color.xyz, planar_reflection_color, 0.5);
 
-	float reflection_factor = met_rough.z + u_metallic_factor;
-	//float reflection_factor = 1.0;
-	color.xyz = mix(color.xyz, reflection_color, reflection_factor);
-	//color.xyz *= planar_reflection_color;
+	if (u_scene_reflections == 1){
+		//float reflection_factor = 1.0;
+		float reflection_factor = met_rough.z + u_metallic_factor;
+		color.xyz = mix(color.xyz, reflection_color, reflection_factor);
+	}
 
 	if(color.a < u_alpha_cutoff)
 		discard;
 
-	// Point
-	if (u_light_type == 1){
-		computeL_point(LightComp);
-	}
-
-	// Spot
-	else if (u_light_type == 2){
-		computeL_point(LightComp);
-		computeSpotFactor(LightComp);
-	}
-
-	// Directional
-	else if (u_light_type == 3){
-		computeL_directional(LightComp);
-	}
-
-
-	computeNdotL(LightComp);
-
-
-	if (u_light_cast_shadows == 1){
-		testShadowMap(LightComp);
-	}
-
-	computeAttenuation(LightComp);
-	light += light_color * LightComp.NdotL * LightComp.att_factor * LightComp.spot_factor * LightComp.shadow_factor;
+	light += computeLight(LightComp, light_color);
 
 	// Apply other textures
 	light += emissive;
 
 	// Occlusion
 	// x coord has occlusion map
-	light *= texture( u_met_rough_texture, v_uv ).x;
+	float occ_factor = texture( u_met_rough_texture, v_uv ).x;
 	// Occlusion can be either in the met_rou or occlusion texture
-	light *= texture( u_occlusion_texture, v_uv ).x;
+	occ_factor += texture( u_occlusion_texture, v_uv ).x;
+	light *= occ_factor;
 
 	color.xyz *= light;
 
@@ -896,7 +908,7 @@ void main()
 		color.a = 0.0;
 		
 	FragColor = color;
-	//FragColor = texture( u_texture, v_uv );
+	//FragColor = vec4(light, 1.0);
 }
 
 // ----------------------------------- GBuffers -----------------------------
@@ -1268,6 +1280,9 @@ void main()
 	);
 
 	vec2 uv = v_uv;
+	vec2 uv_screen = gl_FragCoord.xy * u_iRes;
+	// invertimos la x de izquierda a derecha para que los reflejos no se vean al revés
+	uv_screen.x = 1.0 - uv_screen.x;
 
 	vec4 color = u_color;
 	vec4 color_texture = texture(u_texture, uv);
@@ -1285,17 +1300,45 @@ void main()
 	float metalness = met_rough.y + u_metallic_factor;
 	float roughness = met_rough.z + u_roughness_factor;
 
-	vec3 light = vec3(0.0);
-	vec3 ambient_light = vec3(u_ambient_light);
+	vec3 planar_reflection_color = vec3(0.0);
+	if (u_has_planar_reflections == 0 && v_world_position.y < 0)
+		discard;
+
+	if (u_has_planar_reflections == 1 && abs(v_world_position.y) < 0.1)
+		planar_reflection_color = texture(u_planar_reflections_texture, uv_screen).xyz;
+
+	// V YA SE CALCULA DENTRO DE LAS FUNCIONES POINT, SPOT.. HAY QUE REVISARLO
+	LightComp.V = normalize(v_world_position - u_camera_position);
+	computeN(LightComp);
+	LightComp.R = reflect(LightComp.V, LightComp.N);
+
+	vec3 reflection_color = vec3(0.0);
+	if (u_scene_reflections == 1){
+		reflection_color = textureLod(u_skybox_texture, LightComp.R, met_rough.y * 4.0).xyz;
+	//	reflection_color = texture(u_skybox_texture, LightComp.R).xyz;
+	}
+
+	vec3 light = vec3(u_ambient_light);
 
 	vec3 light_color = u_light_color;
 
 	if (u_gamma == 1){
 		color.xyz = degamma(color.xyz);
 		color_texture.xyz = degamma(color_texture.xyz);
-		ambient_light = degamma(ambient_light);
+		light = degamma(light);
 		light_color = degamma(light_color);
 		emissive.xyz = degamma(emissive.xyz + u_emissive_factor);
+		planar_reflection_color = degamma(planar_reflection_color);
+		reflection_color = degamma(reflection_color);
+	}
+
+	if (u_has_planar_reflections == 1 && abs(v_world_position.y) < 0.1)
+		color.xyz = mix(color.xyz, planar_reflection_color, 0.5);
+
+	if (u_scene_reflections == 1){
+		float reflection_factor = met_rough.z + u_metallic_factor;
+		//float reflection_factor = 1.0;
+		color.xyz = mix(color.xyz, reflection_color, reflection_factor);
 	}
 
 	color *= color_texture;
@@ -1351,12 +1394,13 @@ void main()
 	vec3 lightParams = light_color * LightComp.att_factor * LightComp.spot_factor * LightComp.shadow_factor;
 	//modulate direct light by light received
 	light += lightParams * direct;
-	light += color_texture.xyz * ambient_light;
+	light *= color.xyz;;
 
 
 	// Occlusion
+	float occ_factor = met_rough.x;
+	occlusion += occ_factor;
 	light *= occlusion;
-	light *= met_rough.x;
 
 	// Apply other textures
 	// Emissive
@@ -1381,6 +1425,7 @@ void main()
 		color.a = 0.0;
 
 	FragColor = vec4(light,color.w);
+	//FragColor = vec4(color);
 }
 
 //-----------------------------PBR Deferred -------------------------------

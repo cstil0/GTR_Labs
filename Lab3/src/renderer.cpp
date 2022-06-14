@@ -605,13 +605,19 @@ void Renderer::renderMeshWithMaterial(const Matrix44 model, Mesh* mesh, GTR::Mat
 	//this is used to say which is the alpha threshold to what we should not paint a pixel on the screen (to cut polygons according to texture alpha)
 	shader->setUniform("u_alpha_cutoff", material->alpha_mode == GTR::eAlphaMode::MASK ? material->alpha_cutoff : 0);
 	
-	// POR DEFECTO, LA TEXTURA DE REFLECTION SERÁ LA DEL SKYBOX
-	Texture* reflection = skybox;
-	if (reflection_probe && !is_rendering_reflections)
-		reflection = reflection_probe->texture;
+	if (scene_reflection) {
+		// POR DEFECTO, LA TEXTURA DE REFLECTION SERÁ LA DEL SKYBOX
+		Texture* reflection = skybox;
+		if (reflection_probe && !is_rendering_reflections)
+			reflection = reflection_probe->texture;
 
-	shader->setUniform("u_skybox_texture", reflection, 7);
-
+		shader->setUniform("u_skybox_texture", reflection, 7);
+		shader->setUniform("u_scene_reflections", 1);
+	}
+	else {
+		shader->setUniform("u_scene_reflections", 0);
+		shader->setUniform("u_skybox_texture", Texture::getBlackTexture(), 7);
+	}
 	// pass light parameters
 	if (typeOfRender == eRenderPipeline::SINGLEPASS) {
 		setSinglepass_parameters(material, shader, mesh);
