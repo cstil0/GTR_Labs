@@ -103,12 +103,17 @@ namespace GTR {
 	class Scene
 	{
 	public:
+		enum eSceneType {
+			DEFAULT,
+			SPONZA
+		};
 
 		static Scene* instance;
 
 		Vector3 background_color;
 		Vector3 ambient_light;
 		Camera main_camera;
+		eSceneType scene_type;
 
 
 		Scene();

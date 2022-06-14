@@ -1,0 +1,29 @@
+{
+	"background_color":[0.01,0.01,0.1],
+	"ambient_light":[0.1,0.1,0.2],
+	"environment":"night.hdre",
+	"camera_position":[-300,90,-150],
+	"camera_target":[0,40,0],
+	"camera_fov":60,
+	"entities":[
+		{
+			"name":"sponza",
+			"type":"PREFAB",
+			"filename":"prefabs/sponza/sponza/sponza.gltf",
+			"position":[0,0,0]
+		},
+		{
+			"name":"moonlight",
+			"type":"LIGHT",
+			"position":[150,300,50],
+			"target":[-80,0,-50],
+			"color":[0.1,0.2,0.4],
+			"intensity":1.2,
+			"area_size":1500,
+			"max_dist":1000,
+			"cast_shadows": true,
+			"light_type":"DIRECTIONAL",
+			"shadow_bias": 0.03
+		}	
+	]
+}
