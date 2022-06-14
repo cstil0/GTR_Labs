@@ -152,7 +152,7 @@ namespace GTR {
 		bool planar_reflection;
 		bool render_reflection_probes;
 		bool scene_reflection;
-		ReflectionProbeEntity* probe;
+		ReflectionProbeEntity* reflection_probe;
 
 		Renderer();
 

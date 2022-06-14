@@ -810,8 +810,9 @@ void main()
 	computeN(LightComp);
 	LightComp.R = reflect(LightComp.V, LightComp.N);
 
-	vec3 reflection_color = texture(u_skybox_texture, LightComp.R).xyz;
-
+	// BAJAMOS 4 VALORES SEGUN EL ROUGHNESS PARA QUE ALGUNAS PARTES REFLEJEN MÁS MATE
+	vec3 reflection_color = texture(u_skybox_texture, LightComp.R, met_rough.y * 4.0).xyz;
+	
 	// Emissive
 	vec3 emissive = texture( u_emissive_texture, v_uv ).xyz;
 
@@ -829,7 +830,8 @@ void main()
 	if (u_has_planar_reflections == 1 && abs(v_world_position.y) < 0.1)
 		color.xyz = mix(color.xyz, planar_reflection_color, 0.5);
 
-	float reflection_factor = met_rough.z;
+	float reflection_factor = met_rough.z + u_metallic_factor;
+	//float reflection_factor = 1.0;
 	color.xyz = mix(color.xyz, reflection_color, reflection_factor);
 	//color.xyz *= planar_reflection_color;
 
@@ -894,6 +896,7 @@ void main()
 		color.a = 0.0;
 		
 	FragColor = color;
+	//FragColor = texture( u_texture, v_uv );
 }
 
 // ----------------------------------- GBuffers -----------------------------
@@ -954,9 +957,9 @@ void main()
 	occlusion_factor *= texture( u_occlusion_texture, v_uv ).x;
 
 	// Metalness
-	float metal_factor = texture(u_met_rough_texture, v_uv).y * u_metallic_factor;
+	float metal_factor = texture(u_met_rough_texture, v_uv).y + u_metallic_factor;
 	// Roughness
-	float roughness_factor = texture(u_met_rough_texture, v_uv).z * u_roughness_factor;
+	float roughness_factor = texture(u_met_rough_texture, v_uv).z + u_roughness_factor;
 
 	// don't need to save the alpha
 	GB0 = vec4(color.xyz, metal_factor);
@@ -1279,8 +1282,8 @@ void main()
 
 	computeN(LightComp);
 
-	float metalness = met_rough.y * u_metallic_factor;
-	float roughness = met_rough.z * u_roughness_factor;
+	float metalness = met_rough.y + u_metallic_factor;
+	float roughness = met_rough.z + u_roughness_factor;
 
 	vec3 light = vec3(0.0);
 	vec3 ambient_light = vec3(u_ambient_light);

@@ -85,7 +85,7 @@ GTR::Renderer::Renderer()
 	render_reflection_probes = false;
 	scene_reflection = false;
 	// JAVI DICE QUE ESTO EN LAS SLIDES ESTÁ DIFERENTE POR QUÉ AHI LAS PROBES SE CREAN POR CODIGO (?) -- REVISAR
-	probe = NULL;
+	reflection_probe = NULL;
 	//generateProbes(Scene::instance);
 }
 
@@ -512,10 +512,9 @@ void Renderer::renderScene_RenderCalls(GTR::Scene* scene, Camera* camera, FBO* f
 	if (show_probes_texture && probes_texture)
 		probes_texture->toViewport();
 
-	//if (render_reflection_probes) {
-	//	renderReflectionProbes(scene, camera);
-	//}
-
+	if (render_reflection_probes) {
+		renderReflectionProbes(scene, camera);
+	}
 }
 
 //renders all the prefab
@@ -608,7 +607,10 @@ void Renderer::renderMeshWithMaterial(const Matrix44 model, Mesh* mesh, GTR::Mat
 	
 	// POR DEFECTO, LA TEXTURA DE REFLECTION SERÁ LA DEL SKYBOX
 	Texture* reflection = skybox;
-	shader->setUniform("u_skybox_texture", reflection, 8);
+	if (reflection_probe && !is_rendering_reflections)
+		reflection = reflection_probe->texture;
+
+	shader->setUniform("u_skybox_texture", reflection, 7);
 
 	// pass light parameters
 	if (typeOfRender == eRenderPipeline::SINGLEPASS) {
@@ -836,7 +838,7 @@ void GTR::Renderer::renderForward(Camera* camera, FBO* fboToRender = NULL)
 		screen_fbo->create(Application::instance->window_width, Application::instance->window_height,
 			1,
 			GL_RGBA,
-			GL_UNSIGNED_BYTE,
+			GL_FLOAT,
 			true);
 	}
 
@@ -1299,14 +1301,14 @@ void Renderer::setTextures(GTR::Material* material, Shader* shader) {
 	else
 		shader->setUniform("u_occlusion_texture", Texture::getWhiteTexture(), 2);
 
-	float one_factor = 1.0;
+	float zero_factor = 0.0;
 	if (met_rough_texture) {
 		shader->setUniform("u_met_rough_texture", met_rough_texture, 3);
-		shader->setUniform("u_roughness_factor", one_factor);
-		shader->setUniform("u_metallic_factor", one_factor);
+		shader->setUniform("u_roughness_factor", zero_factor);
+		shader->setUniform("u_metallic_factor", zero_factor);
 	}
 	else {
-		shader->setUniform("u_met_rough_texture", Texture::getWhiteTexture(), 3);
+		shader->setUniform("u_met_rough_texture", Texture::getBlackTexture(), 3);
 		shader->setUniform("u_metallic_factor", material->metallic_factor);
 		shader->setUniform("u_roughness_factor", material->roughness_factor);
 
@@ -1856,7 +1858,7 @@ void GTR::Renderer::generateReflectionProbes(Scene* scene){
 			probe->texture->createCubemap(256, 256, NULL, GL_RGB, GL_UNSIGNED_INT, false);
 		}
 		captureReflectionProbe(scene, probe->texture, probe->model.getTranslation());
-		this->probe = probe;
+		this->reflection_probe = probe;
 	}
 
 }
