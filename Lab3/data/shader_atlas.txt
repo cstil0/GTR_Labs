@@ -16,6 +16,7 @@ irradiance_deferred quad.vs irradiance_deferred.fs
 irradiance_forward basic.vs irradiance_forward.fs
 reflection_probe basic.vs reflection_probe.fs
 skybox basic.vs skybox.fs
+volumetric_deferred quad.vs volumetric_deferred.fs
 depth quad.vs depth.fs
 
 // ------------------------------ Uniforms ------------------------------
@@ -866,7 +867,7 @@ void main()
 		color.xyz = mix(color.xyz, planar_reflection_color, 0.5);
 
 	if (u_scene_reflections == 1){
-		//float reflection_factor = 1.0;
+		//float reflection_factor = 0.9;
 		float reflection_factor = met_rough.z + u_metallic_factor;
 		color.xyz = mix(color.xyz, reflection_color, reflection_factor);
 	}
@@ -2112,6 +2113,127 @@ void main()
 
 	color.xyz *= irradiance;
 	FragColor = vec4(color);
+
+}
+
+//-------------------------------- Volumetric Deferred --------------------------------------
+
+\volumetric_deferred.fs
+#version 330 core
+
+in vec2 v_uv;
+
+uniform sampler2D u_depth_texture;
+uniform sampler2D u_ssao_texture;
+
+uniform vec3 u_camera_position;
+uniform mat4 u_viewprojection;
+uniform mat4 u_inverse_viewprojection;
+uniform vec2 u_iRes;
+uniform float u_air_density;
+
+#include light_uniforms
+
+
+out vec4 FragColor;
+
+const int SAMPLES = 64;
+
+float testShadowMap(vec3 current_pos){
+	//project our 3D position to the shadowmap
+	vec4 proj_pos = u_light_shadowmap_vpm * vec4(current_pos, 1.0);
+
+	//from homogeneus space to clip space
+	vec2 shadow_uv = proj_pos.xy / proj_pos.w;
+	
+	//from clip space to uv space
+	shadow_uv = shadow_uv * 0.5 + vec2(0.5);
+
+	//get point depth [-1 .. +1] in non-linear space
+	float real_depth = (proj_pos.z - u_light_shadow_bias) / proj_pos.w;
+	
+	//normalize from [-1..+1] to [0..+1] still non-linear
+	real_depth = real_depth * 0.5 + 0.5;
+	
+	//read depth from depth buffer in [0..+1] non-linear
+	vec4 scale_factor = u_map_piece;
+	vec2 sh_uv = vec2(shadow_uv.x*scale_factor[0] + scale_factor[2], shadow_uv.y*scale_factor[1] + scale_factor[3]);
+	float shadow_depth = texture( u_light_shadowmap, sh_uv).x;
+	
+	//compute final shadow factor by comparing
+	float shadow_factor = 1.0;
+	
+	//we can compare them, even if they are not linear
+	if( shadow_depth < real_depth )
+		shadow_factor = 0.0;
+		
+	//We must see if it is outside the sides
+	if( shadow_uv.x < 0.0 || shadow_uv.x > 1.0 ||shadow_uv.y < 0.0 || shadow_uv.y > 1.0 )
+		shadow_factor = 1.0;
+
+	//it is before near or behind far plane
+	if(real_depth < 0.0 || real_depth > 1.0)
+		shadow_factor = 1.0;
+
+	return shadow_factor;
+}
+
+void main()
+{
+	vec2 uv = gl_FragCoord.xy * u_iRes.xy;
+	//float ssao_factor = texture(u_ssao_texture, uv).x;
+	float depth = texture( u_depth_texture, uv ).x;
+
+	vec4 screen_pos = vec4(uv.x*2.0-1.0, uv.y*2.0-1.0, depth*2.0-1.0, 1.0 );
+	vec4 proj_worldpos = u_inverse_viewprojection * screen_pos;
+	vec3 world_position = proj_worldpos.xyz / proj_worldpos.w;
+
+	vec3 color = vec3(0.0);
+
+	vec3 ray_start = u_camera_position;
+	vec3 ray_dir = world_position - ray_start;
+	float ray_length = length(ray_dir);
+	ray_dir /= ray_length;
+	ray_length = min(500.0, ray_length);
+
+	float step_dist = ray_length / float(SAMPLES);
+	// LIMITAMOS EL STEP DIST
+	vec3 current_pos = ray_start;
+	vec3 ray_offset = ray_dir * step_dist;
+
+	//how visible is the point at the end of the ray
+	// ESTE TRANSPARENCY IRÁ ITERANDO PARA SABER EL ALPHA UNA VEZ RECORRIDO TODO EL RAYO
+	float transparency = 1.0;
+	vec3 irradiance = vec3(0.0);
+
+	// To know how much shadows are within light
+	for(int i = 0; i < SAMPLES; ++i)
+	{
+		//evaluate contribution
+		//compute illumination in this point
+		float shadow = testShadowMap(current_pos);
+		vec3 light = u_light_color * shadow;
+
+		// CON ESTO PODEMOS HACER QUE FACILMENTE FUNCIONE TAMBIÉN PARA SPOLIGHT
+		//light *= att;
+
+		//accumulate the amount of light
+		irradiance += light * transparency * (u_air_density * step_dist);
+
+		//reduce visibility -- AIR DENSITY Y STEP SON PROPORCIONALES: CUANTO MÁS AVANZAMOS MÁS AIRE HAY DE POR MEDIO
+		transparency -= u_air_density * step_dist;
+
+		//too dense, nothing can be seen behind
+		if( transparency < 0.001 )
+			break;
+
+		//advance to next position
+		current_pos.xyz += ray_offset;
+	}
+
+	// ESTO ES SOLO POR QUE A JAVI NO LE FUNCIONABA, PERO LA FORMA CORRECTA DE HACERLO ES LA DE LAS SLIDES
+	//irradiance = vec3(1.0) * in_light /float(SAMPLES);
+	FragColor = vec4(irradiance, 1.0 - transparency);
 
 }
 

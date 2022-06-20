@@ -36,6 +36,14 @@
 			"scale": [1.11, 1.11, 1.11]
 		},
 		{
+			"name":"mirror",
+			"type":"PREFAB",
+			"filename":"prefabs/mirror/scene.gltf",
+			"position":[129,-1.7,21.59],
+			"angle":90,
+			"scale": [22, 22, 22]
+		},
+		{
 			"name":"house",
 			"type":"PREFAB",
 			"filename":"prefabs/house_test/scene.gltf",

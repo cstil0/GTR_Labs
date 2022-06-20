@@ -24,6 +24,7 @@ using namespace GTR;
 GTR::Renderer::Renderer()
 {
 	max_lights = 10;
+	direct_light = NULL;
 
 	// FBOs
 	fbo = NULL;
@@ -32,6 +33,8 @@ GTR::Renderer::Renderer()
 	irr_fbo = NULL;
 	shadowmap = NULL;
 	ssao_fbo = NULL;
+	volumetric_fbo = NULL;
+	decals_fbo = NULL;
 	screen_texture = NULL;
 	screen_fbo = NULL;
 	probes_texture = NULL;
@@ -68,9 +71,10 @@ GTR::Renderer::Renderer()
 	// meshes
 	sphere = Mesh::Get("data/meshes/sphere.obj", false, false);
 	quad = Mesh::getQuad();
+	cube.createCube();
 
 	// skybox
-	skybox = CubemapFromHDRE("data/night.hdre");
+	//skybox = CubemapFromHDRE("data/night.hdre");
 
 	// irradiance
 	irradiance = false;
@@ -87,11 +91,16 @@ GTR::Renderer::Renderer()
 	// JAVI DICE QUE ESTO EN LAS SLIDES ESTÁ DIFERENTE POR QUÉ AHI LAS PROBES SE CREAN POR CODIGO (?) -- REVISAR
 	reflection_probe = NULL;
 	//generateProbes(Scene::instance);
+
+	// volumetric
+	volumetric = true;
+
+	// decals
 }
 
 // LO BUENO QUE TIENE EL BLOQUE DE MEMORIA DE LAS PROBES ES QUE LAS TENEMOS TODAS COLINDANTES, DE FORMA QUE PARA EVITAR GENERARLAS CADA VEZ
 // PODEMOS GUARDARLAS COMO BINARIO EN EL DISCO Y RECUPERARLAS FACILMENTE
-void Renderer::generateProbes(Scene* scene){
+void Renderer::generateProbes(){
 	probes.clear();
 	glClearColor(0.0, 0.0, 0.0, 1.0);
 	glClear(GL_COLOR_BUFFER_BIT);
@@ -139,7 +148,7 @@ void Renderer::generateProbes(Scene* scene){
 	for (int iP = 0; iP < probes.size(); ++iP)
 	{
 		int probe_index = iP;
-		captureIrradianceProbe(probes[iP], scene);
+		captureIrradianceProbe(probes[iP]);
 		// EL CARACTER \R HACE QUE VUELVA AL PRINCIPIO, EN LUGAR DE VOLVER A PRINTAR TODA LA LINEA ABAJO
 		std::cout << "Generating probes: " << iP << "/" << probes.size() << "\r";
 	}
@@ -184,8 +193,9 @@ void Renderer::generateProbes(Scene* scene){
 // --- Rendercalls manager functions ---
 
 // Generate the rendercalls vector by iterating through the entities vector
-void GTR::Renderer::createRenderCalls(GTR::Scene* scene, Camera* camera)
+void GTR::Renderer::createRenderCalls(Camera* camera)
 {
+	Scene* scene = Scene::instance;
 	render_calls.clear();
 
 	// Iterate the entities vector to save each node
@@ -206,14 +216,15 @@ void GTR::Renderer::createRenderCalls(GTR::Scene* scene, Camera* camera)
 				GTR::Node* curr_node = &pent->prefab->root;
 				Matrix44 node_model = curr_node->getGlobalMatrix(true) * ent->model;
 				// Pass the global matrix for this node and the root one to compute the global matrix for the rest of children
-				addRenderCall_node(scene, camera, curr_node, node_model, ent->model);
+				addRenderCall_node(camera, curr_node, node_model, ent->model);
 			}
 		}
 	}
 }
 
 // Recursive function to add a rendercall node with its children
-void GTR::Renderer::addRenderCall_node(GTR::Scene* scene, Camera* camera, Node* node, Matrix44 curr_model, Matrix44 root_model) {
+void GTR::Renderer::addRenderCall_node(Camera* camera, Node* node, Matrix44 curr_model, Matrix44 root_model) {
+	Scene* scene = Scene::instance;
 	RenderCall rc;
 	// If the node doesn't have mesh or material do not add it
 	if (node->material && node->mesh) {
@@ -238,7 +249,7 @@ void GTR::Renderer::addRenderCall_node(GTR::Scene* scene, Camera* camera, Node* 
 		GTR::Node* curr_node = node->children[j];
 		// Compute global matrix
 		Matrix44 node_model = node->getGlobalMatrix(true) * root_model;
-		addRenderCall_node(scene, camera, curr_node, node_model, root_model);
+		addRenderCall_node(camera, curr_node, node_model, root_model);
 	}
 }
 
@@ -427,7 +438,8 @@ void Renderer::renderScene(GTR::Scene* scene, Camera* camera)
 	}
 }
 
-void Renderer::renderSceneWithReflection(Scene* scene, Camera* camera) {
+void Renderer::renderSceneWithReflection(Camera* camera) {
+	//Scene* scene = Scene::instance;
 	//reflection_fbo->bind();
 
 	// ESTA CAMARA VA A ESTAR EN LA POSICIÓN OPUESTA-- ES EXACTAMENTE LO MISMO PERO CON LA Y INVERTIDA
@@ -437,13 +449,13 @@ void Renderer::renderSceneWithReflection(Scene* scene, Camera* camera) {
 	flipped_camera.enable();
 
 	is_rendering_planar_reflections = true;
-	renderScene_RenderCalls(scene, &flipped_camera, reflection_fbo);
+	renderScene_RenderCalls(&flipped_camera, reflection_fbo);
 	//screen_fbo->unbind();
 	//reflection_fbo->unbind();
 	is_rendering_planar_reflections = false;
 
 	camera->enable();
-	renderScene_RenderCalls(scene, camera, screen_fbo);
+	renderScene_RenderCalls(camera, screen_fbo);
 	// NO SE POR QUE PERO NO FUNCIONA
 	//screen_texture->toViewport();
 
@@ -451,8 +463,9 @@ void Renderer::renderSceneWithReflection(Scene* scene, Camera* camera) {
 }
 
 // To render the scene according to the rendercalls vector
-void Renderer::renderScene_RenderCalls(GTR::Scene* scene, Camera* camera, FBO* fboToRender) {
+void Renderer::renderScene_RenderCalls(Camera* camera, FBO* fboToRender) {
 
+	Scene* scene = Scene::instance;
 	//set the clear color (the background color)
 	glClearColor(scene->background_color.x, scene->background_color.y, scene->background_color.z, 1.0);
 
@@ -460,10 +473,11 @@ void Renderer::renderScene_RenderCalls(GTR::Scene* scene, Camera* camera, FBO* f
 	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 	checkGLErrors();
 
-	renderSkybox(camera);
+	renderSkybox(camera, scene->skybox);
 
 	// Create the lights vector
 	lights.clear();
+	decals.clear();
 	num_lights_shadows = 0;
 	for (int i = 0; i < scene->entities.size(); i++) {
 		BaseEntity* ent = scene->entities[i];
@@ -471,9 +485,15 @@ void Renderer::renderScene_RenderCalls(GTR::Scene* scene, Camera* camera, FBO* f
 			LightEntity* light = (LightEntity*)ent;
 			if (light->visible) {
 				lights.push_back(light);
+				if (light->light_type == GTR::LightEntity::eTypeOfLight::DIRECTIONAL)
+					direct_light = light;
 				if (light->cast_shadows)
 					num_lights_shadows += 1;
 			}
+		}
+		else if (ent->entity_type == GTR::eEntityType::DECAL) {
+			DecalEntity* decal = (DecalEntity*)ent;
+			decals.push_back(decal);
 		}
 	}
 
@@ -494,7 +514,7 @@ void Renderer::renderScene_RenderCalls(GTR::Scene* scene, Camera* camera, FBO* f
 	}
 
 	// Create the vector of nodes
-	createRenderCalls(scene, camera);
+	createRenderCalls(camera);
 
 	// Sort the objects by distance to the camera
 	sortRenderCalls();
@@ -513,7 +533,7 @@ void Renderer::renderScene_RenderCalls(GTR::Scene* scene, Camera* camera, FBO* f
 		probes_texture->toViewport();
 
 	if (render_reflection_probes) {
-		renderReflectionProbes(scene, camera);
+		renderReflectionProbes(camera);
 	}
 }
 
@@ -557,6 +577,8 @@ void Renderer::renderNode(const Matrix44& prefab_model, GTR::Node* node, Camera*
 //renders a mesh given its transform and material
 void Renderer::renderMeshWithMaterial(const Matrix44 model, Mesh* mesh, GTR::Material* material, Camera* camera, int i)
 {
+	Scene* scene = Scene::instance;
+
 	//in case there is nothing to do
 	if (!mesh || !mesh->getNumVertices() || !material)
 		return;
@@ -573,7 +595,6 @@ void Renderer::renderMeshWithMaterial(const Matrix44 model, Mesh* mesh, GTR::Mat
 	assert(glGetError() == GL_NO_ERROR);
 
 	//chose a shader
-	Scene* scene = Scene::instance;
 	if (typeOfRender == eRenderPipeline::SINGLEPASS)
 		shader = Shader::Get("single_pass");
 	else if (typeOfRender == eRenderPipeline::MULTIPASS)
@@ -607,7 +628,7 @@ void Renderer::renderMeshWithMaterial(const Matrix44 model, Mesh* mesh, GTR::Mat
 	
 	if (scene_reflection) {
 		// POR DEFECTO, LA TEXTURA DE REFLECTION SERÁ LA DEL SKYBOX
-		Texture* reflection = skybox;
+		Texture* reflection = scene->skybox;
 		if (reflection_probe && !is_rendering_reflections)
 			reflection = reflection_probe->texture;
 
@@ -640,6 +661,8 @@ void Renderer::renderMeshWithMaterial(const Matrix44 model, Mesh* mesh, GTR::Mat
 // to render only materials with alpha at the end of deferred rendering
 void GTR::Renderer::renderTransparentMaterial(const Matrix44 model, Mesh* mesh, GTR::Material* material, Camera* camera)
 {
+	Scene* scene = Scene::instance;
+
 	//in case there is nothing to do
 	if (!mesh || !mesh->getNumVertices() || !material)
 		return;
@@ -681,8 +704,6 @@ void GTR::Renderer::renderTransparentMaterial(const Matrix44 model, Mesh* mesh, 
 
 	//this is used to say which is the alpha threshold to what we should not paint a pixel on the screen (to cut polygons according to texture alpha)
 	shader->setUniform("u_alpha_cutoff", material->alpha_mode == GTR::eAlphaMode::MASK ? material->alpha_cutoff : 0);
-
-	Scene* scene = Scene::instance;
 
 	Texture* emissive_texture = NULL;
 	emissive_texture = material->emissive_texture.texture;
@@ -734,8 +755,6 @@ void GTR::Renderer::renderMeshWithMaterialToGBuffers(const Matrix44 model, Mesh*
 	assert(glGetError() == GL_NO_ERROR);
 
 	//chose a shader
-	Scene* scene = Scene::instance;
-
 	shader = Shader::Get("gbuffers");
 
 	assert(glGetError() == GL_NO_ERROR);
@@ -804,7 +823,6 @@ void Renderer::renderFlatMesh(const Matrix44 model, Mesh* mesh, GTR::Material* m
 	assert(glGetError() == GL_NO_ERROR);
 
 	//chose a shader
-	Scene* scene = Scene::instance;
 	shader = Shader::Get("flat");
 
 
@@ -865,7 +883,7 @@ void GTR::Renderer::renderForward(Camera* camera, FBO* fboToRender = NULL)
 	glClearColor(scene->background_color.x, scene->background_color.y, scene->background_color.z, 1.0);
 	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
-	renderSkybox(camera);
+	renderSkybox(camera, scene->skybox);
 
 	//render rendercalls
 	for (int i = 0; i < render_calls.size(); ++i) {
@@ -919,7 +937,6 @@ void GTR::Renderer::renderForward(Camera* camera, FBO* fboToRender = NULL)
 void GTR::Renderer::renderDeferred(Camera* camera)
 {
 	Scene* scene = Scene::instance;
-
 	glClearColor(scene->background_color.x, scene->background_color.y, scene->background_color.z, 1.0);
 
 	// Clear the color and the depth buffer
@@ -932,8 +949,6 @@ void GTR::Renderer::renderDeferred(Camera* camera)
 	// create FBOs
 	if (!gbuffers_fbo) {
 		gbuffers_fbo = new FBO();
-		illumination_fbo = new FBO();
-		ssao_fbo = new FBO();
 
 		//create 3 textures of 4 components. We need more bytes for channel to avoid clipping and losing information
 		gbuffers_fbo->create(width, height,
@@ -941,14 +956,19 @@ void GTR::Renderer::renderDeferred(Camera* camera)
 			GL_RGBA,
 			GL_FLOAT,
 			true);
+	}
 
+	if (!illumination_fbo) {
+		illumination_fbo = new FBO();
 		// fbo to compute the illumination for each pixel
 		illumination_fbo->create(width, height,
 			1,
 			GL_RGBA,
 			GL_FLOAT,
 			true);
-
+	}
+	if (!ssao_fbo) {
+		ssao_fbo = new FBO();
 		// ssao fbo. RGB to avoid problems
 		ssao_fbo->create(width, height,
 			1,
@@ -957,9 +977,28 @@ void GTR::Renderer::renderDeferred(Camera* camera)
 			false);
 	}
 
+	// DICE QUE TAMBIÉN PODRÍAMOS CLONAR LAS TEXTURAS DEL GBUFFERS PARA NO TENER QUE CREAR OTRO FBO
+	if (!decals_fbo) {
+		decals_fbo = new FBO();
+
+		//create 3 textures of 4 components. We need more bytes for channel to avoid clipping and losing information
+		decals_fbo->create(width, height,3,GL_RGBA,GL_FLOAT,true);
+	}
+
 	// generate GBuffers
 	gbuffers_fbo->bind();
-	generateGBuffers(scene, camera);
+	generateGBuffers(camera);
+	gbuffers_fbo->unbind();
+
+	// decals
+	// SI QUEREMOS MODIFICAR EL DEPTH BUFFER TAMBIÉN TENDRÍAMOS QUE CLONARLO
+	gbuffers_fbo->color_textures[0]->copyTo(decals_fbo->color_textures[0]);
+	gbuffers_fbo->color_textures[1]->copyTo(decals_fbo->color_textures[1]);
+	gbuffers_fbo->color_textures[2]->copyTo(decals_fbo->color_textures[2]);
+
+	// AHORA QUEREMOS VOLVER A PINTAR EN LOS GBUFFERS MIENTRAS LEEMOS DEL DECALS 
+	gbuffers_fbo->bind();
+	
 	gbuffers_fbo->unbind();
 
 	Matrix44 inv_vp = camera->viewprojection_matrix;
@@ -976,8 +1015,6 @@ void GTR::Renderer::renderDeferred(Camera* camera)
 	illumination_fbo->bind();
 
 	glClearColor(scene->background_color.x, scene->background_color.y, scene->background_color.z, 1.0);
-
-	// Clear the color and the depth buffer
 	glClear(GL_COLOR_BUFFER_BIT);
 
 	// don't need to test depth since the objects are already painted
@@ -985,7 +1022,7 @@ void GTR::Renderer::renderDeferred(Camera* camera)
 	if (show_irradiance)
 		computeIrradianceDeferred(inv_vp);
 	else
-		applyIllumination_deferred(scene, camera, inv_vp, width, height);
+		applyIllumination_deferred(camera, inv_vp, width, height);
 
 	// render objects with alpha
 	//now we copy the gbuffers depth buffer to the binded one since now we need to test depth
@@ -1004,6 +1041,45 @@ void GTR::Renderer::renderDeferred(Camera* camera)
 	}
 	glDisable(GL_DEPTH_TEST);
 	illumination_fbo->unbind();
+
+	// METER EN UNA FUNCIÓN
+	if (volumetric && direct_light) {
+		if (!volumetric_fbo) {
+			volumetric_fbo = new FBO();
+			volumetric_fbo->create(width, height, 1, GL_RGBA);
+		}
+
+		volumetric_fbo->bind();
+		Shader* vol_shader = Shader::Get("volumetric_deferred");
+		vol_shader->enable();
+		vol_shader->setUniform("u_depth_texture", gbuffers_fbo->depth_texture, 4);
+		if (ssao)
+			vol_shader->setUniform("u_ssao_texture", ssao_fbo->color_textures[0], 5);
+		else
+			vol_shader->setUniform("u_ssao_texture", Texture::getWhiteTexture(), 5);
+
+		vol_shader->setUniform("u_camera_position", camera->eye);
+		//pass the inverse projection of the camera to reconstruct world pos.
+		vol_shader->setUniform("u_inverse_viewprojection", inv_vp);
+		//pass the inverse window resolution, this may be useful
+		vol_shader->setUniform("u_iRes", Vector2(1.0 / (float)volumetric_fbo->color_textures[0]->width, 1.0 / (float)volumetric_fbo->color_textures[0]->height));
+		vol_shader->setUniform("u_air_density", scene->air_density * 0.001f);
+
+		// take the index of the direct light shadow to get the corresponding the shadowmap
+		int i_shadow = 0;
+		for (int i = 0; i < lights.size(); i++) {
+			LightEntity* curr_light = lights[i];
+			if (curr_light->light_type == LightEntity::eTypeOfLight::DIRECTIONAL)
+				break;
+						if (curr_light->cast_shadows)
+				i_shadow += 1;
+		}
+
+		uploadLightToShader(direct_light, vol_shader, scene->ambient_light, i_shadow);
+
+		quad->render(GL_TRIANGLES);
+		volumetric_fbo->unbind();
+	}
 	
 	glDisable(GL_BLEND);
 	applyColorCorrection();
@@ -1019,9 +1095,15 @@ void GTR::Renderer::renderDeferred(Camera* camera)
 	glEnable(GL_DEPTH_TEST);
 	glDisable(GL_CULL_FACE);
 	glFrontFace(GL_CCW);
+
+	glEnable(GL_BLEND);
+	glBlendFunc(GL_SRC_ALPHA, GL_ONE);
+	volumetric_fbo->color_textures[0]->toViewport();
+	glDisable(GL_BLEND);
+
 }
 
-void GTR::Renderer::renderSkybox(Camera* camera)
+void GTR::Renderer::renderSkybox(Camera* camera, Texture* skybox)
 {
 	Mesh* mesh = Mesh::Get("data/meshes/sphere.obj");
 	glDisable(GL_CULL_FACE);
@@ -1047,8 +1129,10 @@ void GTR::Renderer::renderSkybox(Camera* camera)
 // -- Deferred functions --
 
 // to generate the gbuffers
-void GTR::Renderer::generateGBuffers(Scene* scene, Camera* camera)
+void GTR::Renderer::generateGBuffers(Camera* camera)
 {
+	Scene* scene = Scene::instance;
+
 	glClearColor(scene->background_color.x, scene->background_color.y, scene->background_color.z, 1.0);
 	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
@@ -1094,8 +1178,10 @@ void GTR::Renderer::generateSSAO(Camera* camera, Matrix44 inv_vp, int width, int
 }
 
 // to apply illumination using deferred
-void GTR::Renderer::applyIllumination_deferred(Scene* scene, Camera* camera, Matrix44 inv_vp, int width, int height)
+void GTR::Renderer::applyIllumination_deferred(Camera* camera, Matrix44 inv_vp, int width, int height)
 {
+	Scene* scene = Scene::instance;
+
 	Shader* shader = NULL;
 	if (pbr)
 		shader = Shader::Get("deferred_pbr");
@@ -1245,7 +1331,7 @@ void GTR::Renderer::applyColorCorrection()
 
 // -- Upload to shader functions --
 
-void Renderer::uploadLightToShader(GTR::LightEntity* light, Shader* shader, Vector3 ambient_light, int shadow_i) {	
+void Renderer::uploadLightToShader(GTR::LightEntity* light, Shader* shader, Vector3 ambient_light, int shadow_i) {
 	shader->setUniform("u_light_type", light->light_type);
 	shader->setUniform("u_ambient_light", ambient_light);
 	shader->setUniform("u_light_position", light->model.getTranslation());
@@ -1261,7 +1347,7 @@ void Renderer::uploadLightToShader(GTR::LightEntity* light, Shader* shader, Vect
 	else if (light->light_type == LightEntity::eTypeOfLight::DIRECTIONAL)
 		shader->setUniform("u_light_direction", (light->model.getTranslation() - light->target));
 
-	if (shadowmap && light->cast_shadows) {
+	if (shadowmap && light->cast_shadows && shadow_i) {
 		shader->setUniform("u_light_cast_shadows", 1);
 		shader->setUniform("u_light_shadowmap", shadowmap, 8);
 		shader->setUniform("u_light_shadowmap_vpm", light->light_camera->viewprojection_matrix);
@@ -1332,6 +1418,8 @@ void Renderer::setTextures(GTR::Material* material, Shader* shader) {
 }
 
 void Renderer::setSinglepass_parameters(GTR::Material* material, Shader* shader, Mesh* mesh) {
+	Scene* scene = Scene::instance;
+
 	Texture* emissive_texture = NULL;
 	emissive_texture = material->emissive_texture.texture;
 
@@ -1414,9 +1502,6 @@ void Renderer::setSinglepass_parameters(GTR::Material* material, Shader* shader,
 		}
 	}
 
-	// Pass to the shader
-	Scene* scene = Scene::instance;
-
 	shader->setUniform("u_gamma", gamma);
 
 	if (!lights.size()) {
@@ -1458,6 +1543,7 @@ void Renderer::setSinglepass_parameters(GTR::Material* material, Shader* shader,
 
 void Renderer::setMultipassParameters(GTR::Material* material, Shader* shader, Mesh* mesh) {
 	Scene* scene = Scene::instance;
+
 	shader->setUniform("u_iRes", Vector2(1.0 / (float)Application::instance->window_width, 1.0 / (float)Application::instance->window_height));
 
 	Texture* emissive_texture = NULL;
@@ -1659,7 +1745,7 @@ void Renderer::renderIrradianceProbe(Vector3 pos, float size, float* coeffs)
 	mesh->render(GL_TRIANGLES);
 }
 
-void Renderer::captureIrradianceProbe(sProbe& probe, Scene* scene) {
+void Renderer::captureIrradianceProbe(sProbe& probe) {
 	Camera cam;
 	FloatImage images[6]; //here we will store the six views
 
@@ -1688,7 +1774,7 @@ void Renderer::captureIrradianceProbe(sProbe& probe, Scene* scene) {
 		//irr_fbo->bind();
 
 		shadow_flag = false;
-		renderScene_RenderCalls(scene, &cam, irr_fbo);
+		renderScene_RenderCalls(&cam, irr_fbo);
 		shadow_flag = true;
 		//irr_fbo->unbind();
 
@@ -1703,6 +1789,8 @@ void Renderer::captureIrradianceProbe(sProbe& probe, Scene* scene) {
 
 void GTR::Renderer::saveProbesToDisk()
 {
+	Scene* scene = Scene::instance;
+
 	//fill header structure
 	sIrrHeader header;
 	header.start = start_irr;
@@ -1710,8 +1798,14 @@ void GTR::Renderer::saveProbesToDisk()
 	header.dims = dim_irr;
 	header.delta = delta_irr;
 	header.num_probes = dim_irr.x * dim_irr.y * dim_irr.z;
+
+	FILE* f;
 	//write to file header and probes data
-	FILE* f = fopen("irradiance.bin", "wb");
+	if (scene->scene_type == GTR::Scene::eSceneType::DEFAULT)
+		f = fopen("default_irradiance.bin", "wb");
+	else if (scene->scene_type == GTR::Scene::eSceneType::SPONZA)
+		f = fopen("sponza_irradiance.bin", "wb");
+
 	fwrite(&header, sizeof(header), 1, f);
 	fwrite(&(probes[0]), sizeof(sProbe), probes.size(), f);
 	fclose(f);
@@ -1719,7 +1813,13 @@ void GTR::Renderer::saveProbesToDisk()
 
 bool GTR::Renderer::loadProbesFromDisk()
 {
-	const char* filename = "irradiance.bin";
+	Scene* scene = Scene::instance;
+
+	const char* filename;
+	if (scene->scene_type == GTR::Scene::eSceneType::DEFAULT)
+		filename = "default_irradiance.bin";
+	else if (scene->scene_type == GTR::Scene::eSceneType::SPONZA)
+		filename = "sponza_irradiance.bin";
 	//load probes info from disk
 	FILE* f = fopen(filename, "rb");
 	if (!f)
@@ -1848,7 +1948,9 @@ void Renderer::computeIrradianceForward(Mesh* mesh, Matrix44 model, Material* ma
 	shader_irr->disable();
 }
 
-void GTR::Renderer::generateReflectionProbes(Scene* scene){
+void GTR::Renderer::generateReflectionProbes(){
+	Scene* scene = Scene::instance;
+
 	if (reflection_fbo == NULL)
 		reflection_fbo->create(Application::instance->window_width, Application::instance->window_height, 1, GL_RGBA, GL_FLOAT, true);
 
@@ -1863,15 +1965,17 @@ void GTR::Renderer::generateReflectionProbes(Scene* scene){
 			probe->texture = new Texture();
 			probe->texture->createCubemap(256, 256, NULL, GL_RGB, GL_UNSIGNED_INT, false);
 		}
-		captureReflectionProbe(scene, probe->texture, probe->model.getTranslation());
+		captureReflectionProbe(probe->texture, probe->model.getTranslation());
 		this->reflection_probe = probe;
 	}
 
 }
 
 	// Reflection functions
-void GTR::Renderer::renderReflectionProbes(Scene* scene, Camera* camera)
+void GTR::Renderer::renderReflectionProbes(Camera* camera)
 {
+	Scene* scene = Scene::instance;
+
 	Shader* shader = Shader::Get("reflection_probe");
 	Mesh* mesh = Mesh::Get("data/meshes/sphere.obj");
 	shader->enable();
@@ -1908,7 +2012,7 @@ void GTR::Renderer::renderReflectionProbes(Scene* scene, Camera* camera)
 	shader->disable();
 }
 
-void GTR::Renderer::captureReflectionProbe(Scene* scene, Texture* tex, Vector3 pos)
+void GTR::Renderer::captureReflectionProbe(Texture* tex, Vector3 pos)
 {
 	// SI LE PASAMOS UNA TEXTURA AL FBO VA A EMPEZAR A PINTAR EN ELLA
 	// ADEMÁS TIENE OTRO PARÁMETRO DONDE LE PODEMOS DECIR LA CARA EN LA QUE QUEREMOS PINTAR SI ES UN CUBEMAP
@@ -1932,7 +2036,7 @@ void GTR::Renderer::captureReflectionProbe(Scene* scene, Texture* tex, Vector3 p
 
 		reflection_probe_fbo->bind();
 		is_rendering_reflections = true;
-		renderScene_RenderCalls(scene, &probe_camera, reflection_probe_fbo);
+		renderScene_RenderCalls(&probe_camera, reflection_probe_fbo);
 		is_rendering_reflections = false;
 		reflection_probe_fbo->unbind();
 		
@@ -1940,6 +2044,35 @@ void GTR::Renderer::captureReflectionProbe(Scene* scene, Texture* tex, Vector3 p
 	//generate the mipmaps
 	glEnable(GL_TEXTURE_CUBE_MAP_SEAMLESS);
 	tex->generateMipmaps();
+}
+
+
+// reload all FBOs when changing the scene
+void GTR::Renderer::reloadRenderer()
+{
+	direct_light = NULL;
+
+	// FBOs
+	fbo = NULL;
+	gbuffers_fbo = NULL;
+	illumination_fbo = NULL;
+	irr_fbo = NULL;
+	shadowmap = NULL;
+	ssao_fbo = NULL;
+	volumetric_fbo = NULL;
+	screen_texture = NULL;
+	screen_fbo = NULL;
+	probes_texture = NULL;
+	width_shadowmap = 2048;
+	height_shadowmap = 2048;
+	irradiance_texture = NULL;
+
+	// reflections
+	reflection_probe_fbo = new FBO();
+	reflection_fbo = new FBO();
+	reflection_fbo->create(Application::instance->window_width, Application::instance->window_height, 1, GL_RGBA, GL_FLOAT, true);
+	// JAVI DICE QUE ESTO EN LAS SLIDES ESTÁ DIFERENTE POR QUÉ AHI LAS PROBES SE CREAN POR CODIGO (?) -- REVISAR
+	reflection_probe = NULL;
 }
 
 

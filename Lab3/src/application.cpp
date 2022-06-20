@@ -18,9 +18,9 @@
 Application* Application::instance = nullptr;
 
 Camera* camera = nullptr;
-std::vector <GTR::Scene*> scenes;
-GTR::Scene* curr_scene;
-int scene_type = 0;
+GTR::Scene* scene = new GTR::Scene();
+int scene_type = GTR::Scene::eSceneType::DEFAULT;
+int last_scene_type = GTR::Scene::eSceneType::DEFAULT;
 GTR::Prefab* prefab = nullptr;
 GTR::Renderer* renderer = nullptr;
 GTR::BaseEntity* selected_entity = nullptr;
@@ -67,17 +67,9 @@ Application::Application(int window_width, int window_height, SDL_Window* window
 	//Example of loading a prefab
 	//prefab = GTR::Prefab::Get("data/prefabs/gmc/scene.gltf");
 
-	GTR::Scene* scene = new GTR::Scene();
 	if (!scene->load("data/scene.json"))
 		exit(1);
-	scenes.push_back(scene);
-
-	GTR::Scene* sponza = new GTR::Scene();
-	if (!scene->load("data/sponza_scene.json"))
-		exit(1);
-	scenes.push_back(sponza);
-
-	curr_scene = scenes[scene_type];
+	scene->scene_type = GTR::Scene::eSceneType::DEFAULT;
 
 	// GENERAR UNA SOLA PROBE DE REFLEXIÓN PARA PROBAR
 	GTR::ReflectionProbeEntity* probe = new GTR::ReflectionProbeEntity();
@@ -120,9 +112,9 @@ void Application::render(void)
 
 	// Use the renderCalls function to render the scene with sorted objects
 	if (renderer->planar_reflection)
-		renderer->renderSceneWithReflection(curr_scene, camera);
+		renderer->renderSceneWithReflection(camera);
 	else
-		renderer->renderScene_RenderCalls(curr_scene, camera, renderer->screen_fbo);
+		renderer->renderScene_RenderCalls(camera, renderer->screen_fbo);
 
 	//Draw the floor grid, helpful to have a reference point
 	/*if(render_debug)
@@ -136,10 +128,22 @@ void Application::render(void)
 
 void Application::update(double seconds_elapsed)
 {
-	for (int i = 0; i < scenes.size(); i++) {
-		if (scenes[i]->scene_type == scene_type) {
-			curr_scene = scenes[i];
+	if (scene_type != scene->scene_type) {
+		delete scene;
+		scene = new GTR::Scene();
+		if (scene_type == GTR::Scene::eSceneType::SPONZA) {
+			if (!scene->load("data/sponza_scene.json"))
+				exit(1);
+			scene->scene_type = GTR::Scene::eSceneType::SPONZA;
 		}
+		else if (scene_type == GTR::Scene::eSceneType::DEFAULT) {
+			if (!scene->load("data/scene.json"))
+				exit(1);
+			scene->scene_type = GTR::Scene::eSceneType::DEFAULT;
+		}
+		camera->lookAt(scene->main_camera.eye, scene->main_camera.center, Vector3(0, 1, 0));
+		camera->fov = scene->main_camera.fov;
+
 	}
 
 	float speed = seconds_elapsed * cam_speed; //the speed is defined by the seconds_elapsed so it goes constant
@@ -270,9 +274,9 @@ void Application::renderDebugGUI(void)
 	ImGui::Text(getGPUStats().c_str());					   // Display some text (you can use a format strings too)
 
 	ImGui::Checkbox("Wireframe", &render_wireframe);
-	ImGui::ColorEdit3("BG color", curr_scene->background_color.v);
-	ImGui::ColorEdit3("Ambient Light", curr_scene->ambient_light.v);
-	ImGui::Combo("Scene", &scene_type, "DEFAULT SCENE\0SPONZA");
+	ImGui::ColorEdit3("BG color", scene->background_color.v);
+	ImGui::ColorEdit3("Ambient Light", scene->ambient_light.v);
+	ImGui::Combo("Scene", &scene_type, "DEFAULT\0SPONZA");
 	ImGui::Combo("Lights shader", &renderer->typeOfRender, "SINGLEPASS\0MULTIPASS", 2);// , GTR::Scene::eRenderPipeline::MULTIPASS));
 	ImGui::Combo("Pipeline", (int*)&renderer->pipeline, "FORWARD\0DEFERRED", 2);
 	ImGui::Checkbox("PBR", &renderer->pbr);
@@ -300,7 +304,7 @@ void Application::renderDebugGUI(void)
 		ImGui::Checkbox("Show probes", &renderer->show_probes);
 		ImGui::Checkbox("Show probes texture", &renderer->show_probes_texture);
 		if (ImGui::Button("Generate probes"))
-			renderer->generateProbes(GTR::Scene::instance);
+			renderer->generateProbes();
 		if (ImGui::Button("Save probes to disk"))
 			renderer->saveProbesToDisk();
 		if (ImGui::Button("Load probes from disk"))
@@ -312,7 +316,12 @@ void Application::renderDebugGUI(void)
 		ImGui::Checkbox("Render reflection probes", &renderer->render_reflection_probes);
 		ImGui::Checkbox("Scene reflection", &renderer->scene_reflection);
 		if (ImGui::Button("Generate probes"))
-			renderer->generateReflectionProbes(curr_scene);
+			renderer->generateReflectionProbes();
+		ImGui::TreePop();
+	}
+	if (ImGui::TreeNode("Volumetric Rendering")) {
+		ImGui::Checkbox("Volumetric", &renderer->volumetric);
+		ImGui::SliderFloat("Air Density", &scene->air_density, 0.0, 10);
 		ImGui::TreePop();
 	}
 
@@ -325,9 +334,9 @@ void Application::renderDebugGUI(void)
 	ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.75f, 0.75f, 0.75f, 1.0f));
 
 	//example to show prefab info: first param must be unique!
-	for (int i = 0; i < curr_scene->entities.size(); ++i)
+	for (int i = 0; i < scene->entities.size(); ++i)
 	{
-		GTR::BaseEntity* entity = curr_scene->entities[i];
+		GTR::BaseEntity* entity = scene->entities[i];
 
 		if(selected_entity == entity)
 			ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.f, 1.f, 1.f, 1.0f));
@@ -359,10 +368,10 @@ void Application::onKeyDown( SDL_KeyboardEvent event )
 		case SDLK_f: camera->center.set(0, 0, 0); camera->updateViewMatrix(); break;
 		case SDLK_F5: Shader::ReloadAll(); break;
 		case SDLK_F6:
-			curr_scene->clear();
-			curr_scene->load(curr_scene->filename.c_str());
-			camera->lookAt(curr_scene->main_camera.eye, curr_scene->main_camera.center, Vector3(0, 1, 0));
-			camera->fov = curr_scene->main_camera.fov;
+			scene->clear();
+			scene->load(scene->filename.c_str());
+			camera->lookAt(scene->main_camera.eye, scene->main_camera.center, Vector3(0, 1, 0));
+			camera->fov = scene->main_camera.fov;
 			break;
 	}
 }
