@@ -27,6 +27,12 @@ namespace GTR {
 		SphericalHarmonics sh; //coeffs
 	};
 
+	struct sReflectionProbe {
+		Vector3 pos;
+		Texture* cubemap = NULL;
+	};
+
+
 	struct sIrrHeader {
 		Vector3 start;
 		Vector3 end;
@@ -135,7 +141,7 @@ namespace GTR {
 		bool shadow_flag;
 
 		// irradiance
-		std::vector<sProbe> probes;
+		std::vector<sProbe> irradiance_probes;
 		Vector3 start_irr;
 		Vector3 end_irr;
 		Vector3 dim_irr;
@@ -152,13 +158,14 @@ namespace GTR {
 		//Texture* skybox;
 
 		// reflections
+		std::vector<sReflectionProbe*> reflection_probes;
 		FBO* reflection_fbo;
 		bool is_rendering_reflections;
 		bool is_rendering_planar_reflections;
 		bool planar_reflection;
 		bool render_reflection_probes;
 		bool scene_reflection;
-		ReflectionProbeEntity* reflection_probe;
+		//ReflectionProbeEntity* reflection_probe;
 
 		// volumetric
 		bool volumetric;
@@ -178,7 +185,7 @@ namespace GTR {
 		Vector4 assignMapPiece(int width, int height, int index, int num_elements);
 		Vector4 assignMapPiece_shader(int width, int height, int index, int num_elements);
 		void generateShadowmap(LightEntity* light, int index);
-		void generateProbes();
+		void generateIrradianceProbes();
 		void showShadowmap(LightEntity* light);
 
 		// -- Render functions --

@@ -17,6 +17,7 @@ irradiance_forward basic.vs irradiance_forward.fs
 reflection_probe basic.vs reflection_probe.fs
 skybox basic.vs skybox.fs
 volumetric_deferred quad.vs volumetric_deferred.fs
+decal basic.vs decal.fs
 depth quad.vs depth.fs
 
 // ------------------------------ Uniforms ------------------------------
@@ -2234,6 +2235,36 @@ void main()
 	// ESTO ES SOLO POR QUE A JAVI NO LE FUNCIONABA, PERO LA FORMA CORRECTA DE HACERLO ES LA DE LAS SLIDES
 	//irradiance = vec3(1.0) * in_light /float(SAMPLES);
 	FragColor = vec4(irradiance, 1.0 - transparency);
+
+}
+
+//-------------------------------- Decals --------------------------------------
+
+\decal.fs
+#version 330 core
+
+in vec2 v_uv;
+
+uniform sampler2D u_depth_texture;
+uniform vec3 u_camera_position;
+uniform mat4 u_viewprojection;
+uniform mat4 u_inverse_viewprojection;
+uniform vec2 u_iRes;
+
+out vec4 FragColor;
+
+void main()
+{
+	vec2 uv = gl_FragCoord.xy * u_iRes.xy;
+	float depth = texture( u_depth_texture, uv ).x;
+
+	vec4 screen_pos = vec4(uv.x*2.0-1.0, uv.y*2.0-1.0, depth*2.0-1.0, 1.0 );
+	vec4 proj_worldpos = u_inverse_viewprojection * screen_pos;
+	vec3 world_position = proj_worldpos.xyz / proj_worldpos.w;
+
+	vec4 color = vec4(1.0, 0.0, 0.0, 1.0);
+
+	FragColor = color;
 
 }
 

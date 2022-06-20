@@ -88,8 +88,7 @@ GTR::Renderer::Renderer()
 	planar_reflection = false;
 	render_reflection_probes = false;
 	scene_reflection = false;
-	// JAVI DICE QUE ESTO EN LAS SLIDES ESTÁ DIFERENTE POR QUÉ AHI LAS PROBES SE CREAN POR CODIGO (?) -- REVISAR
-	reflection_probe = NULL;
+	//reflection_probe = NULL;
 	//generateProbes(Scene::instance);
 
 	// volumetric
@@ -100,8 +99,8 @@ GTR::Renderer::Renderer()
 
 // LO BUENO QUE TIENE EL BLOQUE DE MEMORIA DE LAS PROBES ES QUE LAS TENEMOS TODAS COLINDANTES, DE FORMA QUE PARA EVITAR GENERARLAS CADA VEZ
 // PODEMOS GUARDARLAS COMO BINARIO EN EL DISCO Y RECUPERARLAS FACILMENTE
-void Renderer::generateProbes(){
-	probes.clear();
+void Renderer::generateIrradianceProbes(){
+	irradiance_probes.clear();
 	glClearColor(0.0, 0.0, 0.0, 1.0);
 	glClear(GL_COLOR_BUFFER_BIT);
 
@@ -138,19 +137,19 @@ void Renderer::generateProbes(){
 				//and its position
 				p.pos = start_irr + delta_irr * Vector3(x, y, z);
 				//p.pos = Vector3(x, y, z);
-				probes.push_back(p);
+				irradiance_probes.push_back(p);
 			}
 		}
 	}
 
 	std::cout << std::endl;
 	//now compute the coeffs for every probe
-	for (int iP = 0; iP < probes.size(); ++iP)
+	for (int iP = 0; iP < irradiance_probes.size(); ++iP)
 	{
 		int probe_index = iP;
-		captureIrradianceProbe(probes[iP]);
+		captureIrradianceProbe(irradiance_probes[iP]);
 		// EL CARACTER \R HACE QUE VUELVA AL PRINCIPIO, EN LUGAR DE VOLVER A PRINTAR TODA LA LINEA ABAJO
-		std::cout << "Generating probes: " << iP << "/" << probes.size() << "\r";
+		std::cout << "Generating probes: " << iP << "/" << irradiance_probes.size() << "\r";
 	}
 	std::cout << std::endl;
 	std::cout << "DONE" << std::endl;
@@ -163,7 +162,7 @@ void Renderer::generateProbes(){
 
 	probes_texture = new Texture(
 		9, //9 coefficients per probe
-		probes.size(), //as many rows as probes
+		irradiance_probes.size(), //as many rows as probes
 		GL_RGB, //3 channels per coefficient
 		GL_FLOAT); //they require a high range
 		//we must create the color information for the texture. because every
@@ -173,8 +172,8 @@ void Renderer::generateProbes(){
 	// ESTO ES UN ARRAY DE LOS 9 COEFICIENTES DE CADA PROBE QUE MIDE ANCHO POR ALTO POR PROFUNDIDAD
 	sh_data = new SphericalHarmonics[dim_irr.x * dim_irr.y * dim_irr.z];
 	//here we fill the data of the array with our probes in x,y,z order
-	for (int i = 0; i < probes.size(); ++i)
-		sh_data[i] = probes[i].sh;
+	for (int i = 0; i < irradiance_probes.size(); ++i)
+		sh_data[i] = irradiance_probes[i].sh;
 	//now upload the data to the GPU as a texture
 	probes_texture->upload(GL_RGB, GL_FLOAT, false, (uint8*)sh_data);
 	//disable any texture filtering when reading
@@ -629,8 +628,9 @@ void Renderer::renderMeshWithMaterial(const Matrix44 model, Mesh* mesh, GTR::Mat
 	if (scene_reflection) {
 		// POR DEFECTO, LA TEXTURA DE REFLECTION SERÁ LA DEL SKYBOX
 		Texture* reflection = scene->skybox;
-		if (reflection_probe && !is_rendering_reflections)
-			reflection = reflection_probe->texture;
+		if (reflection_probes.size() && !is_rendering_reflections)
+			//reflection = reflection_probe->texture;
+			reflection = scene->skybox;
 
 		shader->setUniform("u_skybox_texture", reflection, 7);
 		shader->setUniform("u_scene_reflections", 1);
@@ -906,8 +906,8 @@ void GTR::Renderer::renderForward(Camera* camera, FBO* fboToRender = NULL)
 	// LE PASAMOS SOLO EL PRIMER COEFICIENTE// 
 	// .v ES PARA COGER UN PUNTERO AL PRIMER COEFICIENTE
 	if (show_probes) {
-		for (int i = 0; i < probes.size(); ++i)
-			renderIrradianceProbe(probes[i].pos, 2, probes[i].sh.coeffs[0].v);
+		for (int i = 0; i < irradiance_probes.size(); ++i)
+			renderIrradianceProbe(irradiance_probes[i].pos, 2, irradiance_probes[i].sh.coeffs[0].v);
 	}
 
 
@@ -945,6 +945,9 @@ void GTR::Renderer::renderDeferred(Camera* camera)
 
 	int width = Application::instance->window_width;
 	int height = Application::instance->window_height;
+
+	Matrix44 inv_vp = camera->viewprojection_matrix;
+	inv_vp.inverse();
 
 	// create FBOs
 	if (!gbuffers_fbo) {
@@ -991,19 +994,43 @@ void GTR::Renderer::renderDeferred(Camera* camera)
 	gbuffers_fbo->unbind();
 
 	// decals
-	// SI QUEREMOS MODIFICAR EL DEPTH BUFFER TAMBIÉN TENDRÍAMOS QUE CLONARLO
-	gbuffers_fbo->color_textures[0]->copyTo(decals_fbo->color_textures[0]);
-	gbuffers_fbo->color_textures[1]->copyTo(decals_fbo->color_textures[1]);
-	gbuffers_fbo->color_textures[2]->copyTo(decals_fbo->color_textures[2]);
+	if (decals.size()) {
+		// SI QUEREMOS MODIFICAR EL DEPTH BUFFER TAMBIÉN TENDRÍAMOS QUE CLONARLO
+		gbuffers_fbo->color_textures[0]->copyTo(decals_fbo->color_textures[0]);
+		gbuffers_fbo->color_textures[1]->copyTo(decals_fbo->color_textures[1]);
+		gbuffers_fbo->color_textures[2]->copyTo(decals_fbo->color_textures[2]);
+		gbuffers_fbo->depth_texture->copyTo(decals_fbo->depth_texture);
 
-	// AHORA QUEREMOS VOLVER A PINTAR EN LOS GBUFFERS MIENTRAS LEEMOS DEL DECALS 
-	gbuffers_fbo->bind();
+		// AHORA QUEREMOS VOLVER A PINTAR EN LOS GBUFFERS MIENTRAS LEEMOS DEL DECALS 
+		gbuffers_fbo->bind();
+
+		Shader* decal_shader = Shader::Get("decal");
+
+		decal_shader->enable();
+		decal_shader->setUniform("u_gb0_texture", decals_fbo->color_textures[0], 0);
+		decal_shader->setUniform("u_gb1_texture", decals_fbo->color_textures[1], 1);
+		decal_shader->setUniform("u_gb2_texture", decals_fbo->color_textures[2], 2);
+		decal_shader->setUniform("u_depth_texture", decals_fbo->depth_texture, 4);
+		decal_shader->setUniform("u_camera_position", camera->eye);
+		decal_shader->setUniform("u_viewprojection", camera->viewprojection_matrix);
+		//pass the inverse projection of the camera to reconstruct world pos.
+		decal_shader->setUniform("u_inverse_viewprojection", inv_vp);
+		//pass the inverse window resolution, this may be useful
+		decal_shader->setUniform("u_iRes", Vector2(1.0 / (float)width, 1.0 / (float)height));
+
+		for (int i = 0; i < decals.size(); i++) {
+			DecalEntity* decal = decals[i];
+			decal_shader->setUniform("u_model", decal->model);
+			// CON LA INVERSA DE LA MODEL PODEMOS PASAR CUALQUIER COORDENADA DE MUNDO A ESPACIO LOCAL
+			Matrix44 imodel = decal->model;
+			imodel.inverse();
+			decal_shader->setUniform("u_imodel", imodel);
+			cube.render(GL_TRIANGLES);
+		}
+
+		gbuffers_fbo->unbind();
+	}
 	
-	gbuffers_fbo->unbind();
-
-	Matrix44 inv_vp = camera->viewprojection_matrix;
-	inv_vp.inverse();
-
 	// generate SSAO
 	ssao_fbo->bind();
 	glDisable(GL_DEPTH_TEST);
@@ -1807,7 +1834,7 @@ void GTR::Renderer::saveProbesToDisk()
 		f = fopen("sponza_irradiance.bin", "wb");
 
 	fwrite(&header, sizeof(header), 1, f);
-	fwrite(&(probes[0]), sizeof(sProbe), probes.size(), f);
+	fwrite(&(irradiance_probes[0]), sizeof(sProbe), irradiance_probes.size(), f);
 	fclose(f);
 }
 
@@ -1835,9 +1862,9 @@ bool GTR::Renderer::loadProbesFromDisk()
 	//irradiance_delta = header.delta;
 	int num_probes = header.num_probes;
 	//allocate space for the probes
-	probes.resize(num_probes);
+	irradiance_probes.resize(num_probes);
 	//read from disk directly to our probes container in memory
-	fread(&probes[0], sizeof(sProbe), probes.size(), f);
+	fread(&irradiance_probes[0], sizeof(sProbe), irradiance_probes.size(), f);
 	fclose(f);
 	//build the texture again…
 	if (probes_texture != NULL)
@@ -1847,7 +1874,7 @@ bool GTR::Renderer::loadProbesFromDisk()
 	// AIXÒ S'HAURIA DE POSAR EN UNA FUNCIÓ
 	probes_texture = new Texture(
 		9, //9 coefficients per probe
-		probes.size(), //as many rows as probes
+		irradiance_probes.size(), //as many rows as probes
 		GL_RGB, //3 channels per coefficient
 		GL_FLOAT); //they require a high range
 		//we must create the color information for the texture. because every
@@ -1857,8 +1884,8 @@ bool GTR::Renderer::loadProbesFromDisk()
 	// ESTO ES UN ARRAY DE LOS 9 COEFICIENTES DE CADA PROBE QUE MIDE ANCHO POR ALTO POR PROFUNDIDAD
 	sh_data = new SphericalHarmonics[dim_irr.x * dim_irr.y * dim_irr.z];
 	//here we fill the data of the array with our probes in x,y,z order
-	for (int i = 0; i < probes.size(); ++i)
-		sh_data[i] = probes[i].sh;
+	for (int i = 0; i < irradiance_probes.size(); ++i)
+		sh_data[i] = irradiance_probes[i].sh;
 	//now upload the data to the GPU as a texture
 	probes_texture->upload(GL_RGB, GL_FLOAT, false, (uint8*)sh_data);
 	//disable any texture filtering when reading
@@ -1955,20 +1982,58 @@ void GTR::Renderer::generateReflectionProbes(){
 		reflection_fbo->create(Application::instance->window_width, Application::instance->window_height, 1, GL_RGBA, GL_FLOAT, true);
 
 
-	for (int i = 0; i < scene->entities.size(); i++) {
-		BaseEntity* ent = scene->entities[i];
-		if (!ent->visible || ent->entity_type != eEntityType::REFLECTION_PROBE)
-			continue;
-		ReflectionProbeEntity* probe = (ReflectionProbeEntity*)ent;
+	reflection_probes.clear();
+	glClearColor(0.0, 0.0, 0.0, 1.0);
+	glClear(GL_COLOR_BUFFER_BIT);
 
-		if (!probe->texture) {
-			probe->texture = new Texture();
-			probe->texture->createCubemap(256, 256, NULL, GL_RGB, GL_UNSIGNED_INT, false);
+	//when computing the probes position… define the corners of the axis aligned grid this can be done using the boundings of our scene
+	// PODEMOS CREAR UN START_REF O ALGO ASI PARA QUE "CONCEPTUALMENTE SEA MEJOR"
+	start_irr = Vector3(-300, 5, -400);
+	end_irr = Vector3(300, 150, 400);
+	//define how many probes you want per dimension
+	dim_irr = Vector3(10, 4, 10);
+	//compute the vector from one corner to the other
+	delta_irr = Vector3(end_irr - start_irr);
+
+	//and scale it down according to the subdivisions we substract one to be sure the last probe is at end pos
+	delta_irr.x /= (dim_irr.x - 1);
+	delta_irr.y /= (dim_irr.y - 1);
+	delta_irr.z /= (dim_irr.z - 1);
+	//now delta give us the distance between probes in every axis
+
+	for (int z = 0; z < dim_irr.z; ++z)
+	{
+		for (int y = 0; y < dim_irr.y; ++y)
+		{
+			for (int x = 0; x < dim_irr.x; ++x)
+			{
+				sReflectionProbe* p = new sReflectionProbe();
+				//p.local.set(x, y, z);
+				//index in the linear array
+				//p.index = x + y * dim_irr.x + z * dim_irr.x * dim_irr.y;
+				//and its position
+				Vector3 pos = start_irr + delta_irr * Vector3(x, y, z);
+				p->pos.set(pos.x, pos.y, pos.z);
+
+				if (!p->cubemap) {
+					p->cubemap = new Texture();
+					p->cubemap->createCubemap(512, 512, NULL, GL_RGB, GL_UNSIGNED_INT, false);
+				}
+				reflection_probes.push_back(p);
+			}
 		}
-		captureReflectionProbe(probe->texture, probe->model.getTranslation());
-		this->reflection_probe = probe;
 	}
 
+	std::cout << std::endl;
+	//now compute the coeffs for every probe
+	for (int iP = 0; iP < reflection_probes.size(); ++iP)
+	{
+		int probe_index = iP;
+		captureReflectionProbe(reflection_probes[iP]->cubemap, reflection_probes[iP]->pos);
+		std::cout << "Generating probes: " << iP << "/" << reflection_probes.size() << "\r";
+	}
+	std::cout << std::endl;
+	std::cout << "DONE" << std::endl;
 }
 
 	// Reflection functions
@@ -1989,20 +2054,19 @@ void GTR::Renderer::renderReflectionProbes(Camera* camera)
 	glEnable(GL_TEXTURE_CUBE_MAP_SEAMLESS);
 
 	// ES MEJOR GUARDAR LAS REFLECTION PROBES A PARTE CUANDO SACAMOS LOS RENDER CALLS EN UN VECTOR
-	for (int i = 0; i < scene->entities.size(); i++) {
-		BaseEntity* ent = scene->entities[i];
-		if (!ent->visible || ent->entity_type != eEntityType::REFLECTION_PROBE)
-			continue;
-		ReflectionProbeEntity* probe = (ReflectionProbeEntity*)ent;
-		if (!probe->texture)
+	for (int i = 0; i < reflection_probes.size(); i++) {
+		sReflectionProbe* probe = reflection_probes[i];
+		if (!probe->cubemap)
 			continue;
 
-		//model.setTranslation(0, 0, 0);
-		Matrix44 model = ent->model;
-		model.scale(10, 10, 10);
+		// HARCODEADO
+		int size = 10;
+		Matrix44 model;
+		model.setTranslation(probe->pos.x, probe->pos.y, probe->pos.z);
+		model.scale(size, size, size);
 
-		shader->setUniform("u_model", ent->model);
-		shader->setUniform("u_texture", probe->texture, 0);
+		shader->setUniform("u_model", model);
+		shader->setUniform("u_texture", probe->cubemap, 0);
 
 		mesh->render(GL_TRIANGLES);
 		shader->disable();
@@ -2071,10 +2135,7 @@ void GTR::Renderer::reloadRenderer()
 	reflection_probe_fbo = new FBO();
 	reflection_fbo = new FBO();
 	reflection_fbo->create(Application::instance->window_width, Application::instance->window_height, 1, GL_RGBA, GL_FLOAT, true);
-	// JAVI DICE QUE ESTO EN LAS SLIDES ESTÁ DIFERENTE POR QUÉ AHI LAS PROBES SE CREAN POR CODIGO (?) -- REVISAR
-	reflection_probe = NULL;
 }
-
 
 
 Texture* GTR::CubemapFromHDRE(const char* filename)

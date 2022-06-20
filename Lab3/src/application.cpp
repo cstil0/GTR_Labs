@@ -72,9 +72,9 @@ Application::Application(int window_width, int window_height, SDL_Window* window
 	scene->scene_type = GTR::Scene::eSceneType::DEFAULT;
 
 	// GENERAR UNA SOLA PROBE DE REFLEXIÓN PARA PROBAR
-	GTR::ReflectionProbeEntity* probe = new GTR::ReflectionProbeEntity();
-	probe->model.setTranslation(40, 40, 40);
-	scene->addEntity(probe);
+	//GTR::ReflectionProbeEntity* probe = new GTR::ReflectionProbeEntity();
+	//probe->model.setTranslation(40, 40, 40);
+	//scene->addEntity(probe);
 
 	camera->lookAt(scene->main_camera.eye, scene->main_camera.center, Vector3(0, 1, 0));
 	camera->fov = scene->main_camera.fov;
@@ -304,7 +304,7 @@ void Application::renderDebugGUI(void)
 		ImGui::Checkbox("Show probes", &renderer->show_probes);
 		ImGui::Checkbox("Show probes texture", &renderer->show_probes_texture);
 		if (ImGui::Button("Generate probes"))
-			renderer->generateProbes();
+			renderer->generateIrradianceProbes();
 		if (ImGui::Button("Save probes to disk"))
 			renderer->saveProbesToDisk();
 		if (ImGui::Button("Load probes from disk"))

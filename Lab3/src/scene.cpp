@@ -161,6 +161,9 @@ GTR::BaseEntity* GTR::Scene::createEntity(std::string type)
 	if (type == "LIGHT")
 		return new GTR::LightEntity();
 
+	if (type == "DECAL")
+		return new GTR::DecalEntity();
+
 	return NULL;
 }
 
@@ -286,26 +289,6 @@ void GTR::LightEntity::configure(cJSON* json)
 	cone_exp = readJSONNumber(json, "cone_exp", cone_angle);
 	cast_shadows = readJSONBool(json, "cast_shadows", false);
 	shadow_bias = readJSONNumber(json, "shadow_bias", shadow_bias);
-}
-
-GTR::ReflectionProbeEntity::ReflectionProbeEntity()
-{
-	entity_type = REFLECTION_PROBE;
-	texture = NULL;
-}
-
-void GTR::ReflectionProbeEntity::renderInMenu()
-{
-	BaseEntity::renderInMenu();
-}
-
-GTR::DecalEntity::DecalEntity()
-{
-	entity_type = eEntityType::DECAL;
-}
-
-void GTR::ReflectionProbeEntity::configure(cJSON* json)
-{
 }
 
 void GTR::DecalEntity::configure(cJSON* json)
