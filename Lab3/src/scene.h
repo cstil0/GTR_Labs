@@ -71,7 +71,9 @@ namespace GTR {
 		Vector3 color;
 		float intensity;
 		int light_type;
+		float angle;
 
+		int shadow_i;
 		bool cast_shadows;
 		float shadow_bias;
 

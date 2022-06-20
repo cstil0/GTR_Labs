@@ -71,6 +71,7 @@ GTR::Renderer::Renderer()
 	// meshes
 	sphere = Mesh::Get("data/meshes/sphere.obj", false, false);
 	quad = Mesh::getQuad();
+	cone = Mesh::Get("data/meshes/cone.obj", false, false);
 	cube.createCube();
 
 	// skybox
@@ -484,10 +485,15 @@ void Renderer::renderScene_RenderCalls(Camera* camera, FBO* fboToRender) {
 			LightEntity* light = (LightEntity*)ent;
 			if (light->visible) {
 				lights.push_back(light);
-				if (light->light_type == GTR::LightEntity::eTypeOfLight::DIRECTIONAL)
+				if (light->light_type == GTR::LightEntity::eTypeOfLight::SPOT)
 					direct_light = light;
-				if (light->cast_shadows)
+				if (light->cast_shadows) {
+					light->shadow_i = num_lights_shadows;
 					num_lights_shadows += 1;
+				}
+				else{
+					light->shadow_i = -1;
+				}
 			}
 		}
 		else if (ent->entity_type == GTR::eEntityType::DECAL) {
@@ -1077,7 +1083,17 @@ void GTR::Renderer::renderDeferred(Camera* camera)
 		}
 
 		volumetric_fbo->bind();
-		Shader* vol_shader = Shader::Get("volumetric_deferred");
+		glClearColor(scene->background_color.x, scene->background_color.y, scene->background_color.z, 1.0);
+		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+		checkGLErrors();
+
+		Shader* vol_shader;
+		if (direct_light->light_type == LightEntity::eTypeOfLight::SPOT) {
+			vol_shader = Shader::Get("volumetric_deferred_nondir");
+		}
+		else {
+			vol_shader = Shader::Get("volumetric_deferred");
+		}
 		vol_shader->enable();
 		vol_shader->setUniform("u_depth_texture", gbuffers_fbo->depth_texture, 4);
 		if (ssao)
@@ -1086,25 +1102,38 @@ void GTR::Renderer::renderDeferred(Camera* camera)
 			vol_shader->setUniform("u_ssao_texture", Texture::getWhiteTexture(), 5);
 
 		vol_shader->setUniform("u_camera_position", camera->eye);
+		vol_shader->setUniform("u_viewprojection", camera->viewprojection_matrix);
 		//pass the inverse projection of the camera to reconstruct world pos.
 		vol_shader->setUniform("u_inverse_viewprojection", inv_vp);
 		//pass the inverse window resolution, this may be useful
 		vol_shader->setUniform("u_iRes", Vector2(1.0 / (float)volumetric_fbo->color_textures[0]->width, 1.0 / (float)volumetric_fbo->color_textures[0]->height));
 		vol_shader->setUniform("u_air_density", scene->air_density * 0.001f);
 
+		Matrix44 model;
+		model.translate(direct_light->model.getTranslation().x, direct_light->model.getTranslation().y, direct_light->model.getTranslation().z);
+		model.scale(direct_light->max_distance, direct_light->max_distance, direct_light->max_distance);
+		model.rotate(DEG2RAD*90, vec3(0, 0, 1));
+		model.rotate(DEG2RAD*(-direct_light->angle), vec3(0, -1, 0));
+		vol_shader->setUniform("u_model", model);
 		// take the index of the direct light shadow to get the corresponding the shadowmap
-		int i_shadow = 0;
-		for (int i = 0; i < lights.size(); i++) {
-			LightEntity* curr_light = lights[i];
-			if (curr_light->light_type == LightEntity::eTypeOfLight::DIRECTIONAL)
-				break;
-						if (curr_light->cast_shadows)
-				i_shadow += 1;
+		//int i_shadow = 0;
+		//for (int i = 0; i < lights.size(); i++) {
+		//	LightEntity* curr_light = lights[i];
+		//	if (curr_light->light_type == LightEntity::eTypeOfLight::DIRECTIONAL)
+		//		break;
+		//	if (curr_light->cast_shadows)
+		//		i_shadow += 1;
+		//}
+
+		uploadLightToShader(direct_light, vol_shader, scene->ambient_light, direct_light->shadow_i);
+
+		if (direct_light->light_type == LightEntity::eTypeOfLight::SPOT) {
+
+			cone->render(GL_TRIANGLES);
 		}
-
-		uploadLightToShader(direct_light, vol_shader, scene->ambient_light, i_shadow);
-
-		quad->render(GL_TRIANGLES);
+		else {
+			quad->render(GL_TRIANGLES);
+		}
 		volumetric_fbo->unbind();
 	}
 	

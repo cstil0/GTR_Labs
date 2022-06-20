@@ -153,6 +153,7 @@ namespace GTR {
 		Mesh* sphere;
 		Mesh* quad;
 		Mesh cube;
+		Mesh* cone;
 
 		// skybox
 		//Texture* skybox;

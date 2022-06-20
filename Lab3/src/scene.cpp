@@ -221,6 +221,7 @@ GTR::LightEntity::LightEntity()
 	area_size = 0;
 	target = vec3(0.0, 0.0, 0.0);
 
+	shadow_i = -1;
 	cast_shadows = false;
 	shadow_bias = 0;
 
@@ -283,6 +284,7 @@ void GTR::LightEntity::configure(cJSON* json)
 	else
 		light_type = eTypeOfLight::NONE;
 
+	area_size = readJSONNumber(json, "angle", angle);
 	area_size = readJSONNumber(json, "area_size", area_size);
 	max_distance = readJSONNumber(json, "max_dist", max_distance);
 	cone_angle = readJSONNumber(json, "cone_angle", cone_angle);
