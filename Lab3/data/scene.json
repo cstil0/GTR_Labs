@@ -13,6 +13,13 @@
 			"position":[0,0,0]
 		},
 		{
+			"name":"decal",
+			"type":"DECAL",
+			"albedo":"textures/glass_fissure.png",
+			"position":[0,0,0],
+			"scale":[2,1,1]
+		},
+		{
 			"name":"car1",
 			"type":"PREFAB",
 			"filename":"prefabs/gmc/scene.gltf",
@@ -34,6 +41,14 @@
 			"position":[-572.65,-1.7,-413.9],
 			"angle":-90,
 			"scale": [1.11, 1.11, 1.11]
+		},
+		{
+			"name":"mirror",
+			"type":"PREFAB",
+			"filename":"prefabs/mirror/scene.gltf",
+			"position":[129,-1.7,21.59],
+			"angle":90,
+			"scale": [22, 22, 22]
 		},
 		{
 			"name":"house",

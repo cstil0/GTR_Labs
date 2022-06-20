@@ -10,6 +10,7 @@ GTR::Scene* GTR::Scene::instance = NULL;
 GTR::Scene::Scene()
 {
 	instance = this;
+	air_density = 1.0;
 	// Start with singlepass
 }
 
@@ -25,7 +26,18 @@ void GTR::Scene::clear()
 
 void GTR::Scene::addEntity(BaseEntity* entity)
 {
-	entities.push_back(entity); entity->scene = this;
+	entities.push_back(entity); 
+	entity->scene = this;
+	if (entity->name.size())
+		entities_by_name[entity->name] = entity;
+}
+
+GTR::BaseEntity* GTR::Scene::getEntityByName(std::string name)
+{
+	auto it = entities_by_name.find(name);
+	if (it == entities_by_name.end())
+		return NULL;
+	return it->second;
 }
 
 bool GTR::Scene::load(const char* filename)
@@ -55,6 +67,10 @@ bool GTR::Scene::load(const char* filename)
 	main_camera.eye = readJSONVector3(json, "camera_position", main_camera.eye);
 	main_camera.center = readJSONVector3(json, "camera_target", main_camera.center);
 	main_camera.fov = readJSONNumber(json, "camera_fov", main_camera.fov);
+	std::string skybox_filename = cJSON_GetObjectItem(json, "environment")->valuestring;
+	skybox = CubemapFromHDRE((std::string("data/") + skybox_filename).c_str());
+	if (!skybox)
+		std::cout << "Skybox texture not found: " << filename << std::endl;
 
 	//entities
 	cJSON* entities_json = cJSON_GetObjectItemCaseSensitive(json, "entities");
@@ -144,6 +160,9 @@ GTR::BaseEntity* GTR::Scene::createEntity(std::string type)
 
 	if (type == "LIGHT")
 		return new GTR::LightEntity();
+
+	if (type == "DECAL")
+		return new GTR::DecalEntity();
 
 	return NULL;
 }
@@ -272,17 +291,8 @@ void GTR::LightEntity::configure(cJSON* json)
 	shadow_bias = readJSONNumber(json, "shadow_bias", shadow_bias);
 }
 
-GTR::ReflectionProbeEntity::ReflectionProbeEntity()
+void GTR::DecalEntity::configure(cJSON* json)
 {
-	entity_type = REFLECTION_PROBE;
-	texture = NULL;
-}
-
-void GTR::ReflectionProbeEntity::renderInMenu()
-{
-	BaseEntity::renderInMenu();
-}
-
-void GTR::ReflectionProbeEntity::configure(cJSON* json)
-{
+	if (cJSON_GetObjectItem(json, "texture"))
+		texture = cJSON_GetObjectItem(json, "texture")->valuestring;
 }

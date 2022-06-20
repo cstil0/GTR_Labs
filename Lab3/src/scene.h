@@ -5,6 +5,7 @@
 #include "camera.h"
 #include "material.h"
 #include <string>
+#include <map>
 
 //forward declaration
 class cJSON; 
@@ -19,7 +20,7 @@ namespace GTR {
 		LIGHT = 2,
 		CAMERA = 3,
 		REFLECTION_PROBE = 4,
-		DECALL = 5,
+		DECAL = 5,
 	};
 
 	class Scene;
@@ -90,14 +91,23 @@ namespace GTR {
 		virtual void configure(cJSON* json);
 	};
 
-	class ReflectionProbeEntity : public GTR::BaseEntity {
+	class DecalEntity : public BaseEntity {
 	public:
-		Texture* texture;
+		std::string texture;
 
-		ReflectionProbeEntity();
-		virtual void renderInMenu();
+		DecalEntity() {};
+		virtual void renderInMenu() {};
 		virtual void configure(cJSON* json);
 	};
+
+	//class ReflectionProbeEntity : public GTR::BaseEntity {
+	//public:
+	//	Texture* texture;
+
+	//	ReflectionProbeEntity();
+	//	virtual void renderInMenu();
+	//	virtual void configure(cJSON* json);
+	//};
 
 	//contains all entities of the scene
 	class Scene
@@ -112,22 +122,28 @@ namespace GTR {
 
 		Vector3 background_color;
 		Vector3 ambient_light;
+		float air_density;
 		Camera main_camera;
-		eSceneType scene_type;
-
-
-		Scene();
+		int scene_type;
+		Texture* skybox;
 
 		std::string filename;
 		// entities in the scene
 		std::vector<BaseEntity*> entities;
+		std::map<std::string, BaseEntity*> entities_by_name;
+
+		Scene();
 
 		void clear();
 		void addEntity(BaseEntity* entity);
 
+		BaseEntity* getEntityByName(std::string name);
+
 		bool load(const char* filename);
 		BaseEntity* createEntity(std::string type);
 	};
+	Texture* CubemapFromHDRE(const char* filename);
+
 };
 
 #endif
