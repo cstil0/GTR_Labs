@@ -15,9 +15,10 @@
 		{
 			"name":"decal",
 			"type":"DECAL",
-			"albedo":"textures/glass_fissure.png",
-			"position":[0,0,0],
-			"scale":[2,1,1]
+			"texture":"data/textures/glass_fissure.png",
+			"position":[186.1,75.6,-83.075],
+			"scale":[18.4,17.1,13],
+			"angle":90
 		},
 		{
 			"name":"car1",
@@ -125,7 +126,8 @@
 			"cone_exp":7.3,
 			"light_type":"SPOT",
 			"cast_shadows": true,
-			"shadow_bias": 0.015
+			"shadow_bias": 0.015,
+			"volumetric": true
 		},
 		{
 			"name":"spot2",
@@ -139,7 +141,8 @@
 			"cone_exp":23,
 			"light_type":"SPOT",
 			"cast_shadows": true,
-			"shadow_bias": 0.037
+			"shadow_bias": 0.037,
+			"volumetric": true
 		},
 		{
 			"name":"spot3",
@@ -153,7 +156,8 @@
 			"cone_exp":23,
 			"light_type":"SPOT",
 			"cast_shadows": true,
-			"shadow_bias": 0.037
+			"shadow_bias": 0.037,
+			"volumetric": true
 		},
 		{
 			"name":"pointlight",
@@ -246,7 +250,8 @@
 			"max_dist":1000,
 			"cast_shadows": true,
 			"light_type":"DIRECTIONAL",
-			"shadow_bias": 0.03
+			"shadow_bias": 0.03,
+			"volumetric":true
 		}	
 	]
 }

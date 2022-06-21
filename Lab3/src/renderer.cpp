@@ -485,8 +485,8 @@ void Renderer::renderScene_RenderCalls(Camera* camera, FBO* fboToRender) {
 			LightEntity* light = (LightEntity*)ent;
 			if (light->visible) {
 				lights.push_back(light);
-				if (light->light_type == GTR::LightEntity::eTypeOfLight::SPOT)
-					direct_light = light;
+				//if (light->light_type == GTR::LightEntity::eTypeOfLight::SPOT)
+				//	direct_light = light;
 				if (light->cast_shadows) {
 					light->shadow_i = num_lights_shadows;
 					num_lights_shadows += 1;
@@ -504,7 +504,7 @@ void Renderer::renderScene_RenderCalls(Camera* camera, FBO* fboToRender) {
 
 	// Generate shadowmaps
 	// to know if it is the first light casting shadows and therefore clear the depthbuffer of the fbo
-	int lshadow_i = 0;
+	//int lshadow_i = 0;
 	for (int i = 0; i < lights.size(); i++) {
 		if (!shadow_flag)
 			continue;
@@ -512,8 +512,8 @@ void Renderer::renderScene_RenderCalls(Camera* camera, FBO* fboToRender) {
 		// generate only if light is inside the frustum
 		if (light->cast_shadows) {
 			if (camera->testSphereInFrustum(light->model.getTranslation(), light->max_distance)) {
-				generateShadowmap(light, lshadow_i);
-				lshadow_i += 1;
+				generateShadowmap(light, light->shadow_i);
+				//lshadow_i += 1;
 			}
 		}
 	}
@@ -1005,7 +1005,10 @@ void GTR::Renderer::renderDeferred(Camera* camera)
 		gbuffers_fbo->color_textures[0]->copyTo(decals_fbo->color_textures[0]);
 		gbuffers_fbo->color_textures[1]->copyTo(decals_fbo->color_textures[1]);
 		gbuffers_fbo->color_textures[2]->copyTo(decals_fbo->color_textures[2]);
-		gbuffers_fbo->depth_texture->copyTo(decals_fbo->depth_texture);
+		
+		decals_fbo->bind();
+		gbuffers_fbo->depth_texture->copyTo(NULL);
+		decals_fbo->unbind();
 
 		// AHORA QUEREMOS VOLVER A PINTAR EN LOS GBUFFERS MIENTRAS LEEMOS DEL DECALS 
 		gbuffers_fbo->bind();
@@ -1024,9 +1027,17 @@ void GTR::Renderer::renderDeferred(Camera* camera)
 		//pass the inverse window resolution, this may be useful
 		decal_shader->setUniform("u_iRes", Vector2(1.0 / (float)width, 1.0 / (float)height));
 
+		glEnable(GL_BLEND);
+		glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 		for (int i = 0; i < decals.size(); i++) {
 			DecalEntity* decal = decals[i];
 			decal_shader->setUniform("u_model", decal->model);
+			// IGUAL NO HACE FALTA CARGAR ESTO CADA VEZ..
+			Texture* decal_texture = Texture::Get(decal->texture.c_str());
+			if (!decal_texture)
+				continue;
+
+			decal_shader->setUniform("u_decal_texture", decal_texture, 3);
 			// CON LA INVERSA DE LA MODEL PODEMOS PASAR CUALQUIER COORDENADA DE MUNDO A ESPACIO LOCAL
 			Matrix44 imodel = decal->model;
 			imodel.inverse();
@@ -1034,6 +1045,7 @@ void GTR::Renderer::renderDeferred(Camera* camera)
 			cube.render(GL_TRIANGLES);
 		}
 
+		glDisable(GL_BLEND);
 		gbuffers_fbo->unbind();
 	}
 	
@@ -1076,67 +1088,78 @@ void GTR::Renderer::renderDeferred(Camera* camera)
 	illumination_fbo->unbind();
 
 	// METER EN UNA FUNCIÓN
-	if (volumetric && direct_light) {
-		if (!volumetric_fbo) {
-			volumetric_fbo = new FBO();
-			volumetric_fbo->create(width, height, 1, GL_RGBA);
+	for (int i = 0; i < lights.size(); i++){
+		LightEntity* light = lights[i];
+
+		if (light->volumetric && volumetric) {
+			if (!volumetric_fbo) {
+				volumetric_fbo = new FBO();
+				volumetric_fbo->create(width, height, 1, GL_RGBA);
+			}
+
+			volumetric_fbo->bind();
+			glClearColor(scene->background_color.x, scene->background_color.y, scene->background_color.z, 0.0);
+			glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+			checkGLErrors();
+
+			Shader* vol_shader;
+			if (light->light_type == (int)LightEntity::eTypeOfLight::SPOT) {
+				vol_shader = Shader::Get("volumetric_deferred_nondir");
+			}
+			else {
+				vol_shader = Shader::Get("volumetric_deferred");
+			}
+			vol_shader->enable();
+			vol_shader->setUniform("u_depth_texture", gbuffers_fbo->depth_texture, 4);
+			if (ssao)
+				vol_shader->setUniform("u_ssao_texture", ssao_fbo->color_textures[0], 5);
+			else
+				vol_shader->setUniform("u_ssao_texture", Texture::getWhiteTexture(), 5);
+
+			vol_shader->setUniform("u_camera_position", camera->eye);
+			vol_shader->setUniform("u_viewprojection", camera->viewprojection_matrix);
+			//pass the inverse projection of the camera to reconstruct world pos.
+			vol_shader->setUniform("u_inverse_viewprojection", inv_vp);
+			//pass the inverse window resolution, this may be useful
+			vol_shader->setUniform("u_iRes", Vector2(1.0 / (float)volumetric_fbo->color_textures[0]->width, 1.0 / (float)volumetric_fbo->color_textures[0]->height));
+			vol_shader->setUniform("u_air_density", scene->air_density * 0.001f);
+
+			Matrix44 model;
+			model.translate(light->model.getTranslation().x, light->model.getTranslation().y, light->model.getTranslation().z);
+			model.scale(light->max_distance, light->max_distance, light->max_distance);
+			//model.rotate(DEG2RAD*90, vec3(0, 0, 1));
+			//model.rotate(DEG2RAD*light->angle, vec3(0, -1, 0));
+			vol_shader->setUniform("u_model", model);
+			// take the index of the direct light shadow to get the corresponding the shadowmap
+			//int i_shadow = 0;
+			//for (int i = 0; i < lights.size(); i++) {
+			//	LightEntity* curr_light = lights[i];
+			//	if (curr_light->light_type == LightEntity::eTypeOfLight::DIRECTIONAL)
+			//		break;
+			//	if (curr_light->cast_shadows)
+			//		i_shadow += 1;
+			//}
+
+			uploadLightToShader(light, vol_shader, scene->ambient_light, light->shadow_i);
+
+			if (light->light_type == LightEntity::eTypeOfLight::SPOT) {
+
+				sphere->render(GL_TRIANGLES);
+			}
+			else {
+				quad->render(GL_TRIANGLES);
+			}
+			volumetric_fbo->unbind();
+
+			illumination_fbo->bind();
+			glEnable(GL_BLEND);
+			glBlendFunc(GL_SRC_ALPHA, GL_ONE);
+			volumetric_fbo->color_textures[0]->toViewport();
+			glDisable(GL_BLEND);
+			illumination_fbo->unbind();
 		}
-
-		volumetric_fbo->bind();
-		glClearColor(scene->background_color.x, scene->background_color.y, scene->background_color.z, 1.0);
-		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-		checkGLErrors();
-
-		Shader* vol_shader;
-		if (direct_light->light_type == LightEntity::eTypeOfLight::SPOT) {
-			vol_shader = Shader::Get("volumetric_deferred_nondir");
-		}
-		else {
-			vol_shader = Shader::Get("volumetric_deferred");
-		}
-		vol_shader->enable();
-		vol_shader->setUniform("u_depth_texture", gbuffers_fbo->depth_texture, 4);
-		if (ssao)
-			vol_shader->setUniform("u_ssao_texture", ssao_fbo->color_textures[0], 5);
-		else
-			vol_shader->setUniform("u_ssao_texture", Texture::getWhiteTexture(), 5);
-
-		vol_shader->setUniform("u_camera_position", camera->eye);
-		vol_shader->setUniform("u_viewprojection", camera->viewprojection_matrix);
-		//pass the inverse projection of the camera to reconstruct world pos.
-		vol_shader->setUniform("u_inverse_viewprojection", inv_vp);
-		//pass the inverse window resolution, this may be useful
-		vol_shader->setUniform("u_iRes", Vector2(1.0 / (float)volumetric_fbo->color_textures[0]->width, 1.0 / (float)volumetric_fbo->color_textures[0]->height));
-		vol_shader->setUniform("u_air_density", scene->air_density * 0.001f);
-
-		Matrix44 model;
-		model.translate(direct_light->model.getTranslation().x, direct_light->model.getTranslation().y, direct_light->model.getTranslation().z);
-		model.scale(direct_light->max_distance, direct_light->max_distance, direct_light->max_distance);
-		model.rotate(DEG2RAD*90, vec3(0, 0, 1));
-		model.rotate(DEG2RAD*(-direct_light->angle), vec3(0, -1, 0));
-		vol_shader->setUniform("u_model", model);
-		// take the index of the direct light shadow to get the corresponding the shadowmap
-		//int i_shadow = 0;
-		//for (int i = 0; i < lights.size(); i++) {
-		//	LightEntity* curr_light = lights[i];
-		//	if (curr_light->light_type == LightEntity::eTypeOfLight::DIRECTIONAL)
-		//		break;
-		//	if (curr_light->cast_shadows)
-		//		i_shadow += 1;
-		//}
-
-		uploadLightToShader(direct_light, vol_shader, scene->ambient_light, direct_light->shadow_i);
-
-		if (direct_light->light_type == LightEntity::eTypeOfLight::SPOT) {
-
-			cone->render(GL_TRIANGLES);
-		}
-		else {
-			quad->render(GL_TRIANGLES);
-		}
-		volumetric_fbo->unbind();
 	}
-	
+
 	glDisable(GL_BLEND);
 	applyColorCorrection();
 	
@@ -1152,10 +1175,12 @@ void GTR::Renderer::renderDeferred(Camera* camera)
 	glDisable(GL_CULL_FACE);
 	glFrontFace(GL_CCW);
 
-	glEnable(GL_BLEND);
-	glBlendFunc(GL_SRC_ALPHA, GL_ONE);
-	volumetric_fbo->color_textures[0]->toViewport();
-	glDisable(GL_BLEND);
+	//if (volumetric && direct_light) {
+	//	glEnable(GL_BLEND);
+	//	glBlendFunc(GL_SRC_ALPHA, GL_ONE);
+	//	volumetric_fbo->color_textures[0]->toViewport();
+	//	glDisable(GL_BLEND);
+	//}
 
 }
 
@@ -1830,7 +1855,10 @@ void Renderer::captureIrradianceProbe(sProbe& probe) {
 		//irr_fbo->bind();
 
 		shadow_flag = false;
+		// to avoid computing irradiante with the already computed irradiance
+		irradiance = false;
 		renderScene_RenderCalls(&cam, irr_fbo);
+		irradiance = true;
 		shadow_flag = true;
 		//irr_fbo->unbind();
 

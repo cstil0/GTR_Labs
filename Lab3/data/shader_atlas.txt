@@ -17,7 +17,7 @@ irradiance_forward basic.vs irradiance_forward.fs
 reflection_probe basic.vs reflection_probe.fs
 skybox basic.vs skybox.fs
 volumetric_deferred quad.vs volumetric_deferred.fs
-volumetric_deferred_nondir basic.vs volumetric_deferred.fs
+volumetric_deferred_nondir basic.vs volumetric_deferred_nondir.fs
 decal basic.vs decal.fs
 depth quad.vs depth.fs
 
@@ -2235,6 +2235,8 @@ void main()
 
 	// ESTO ES SOLO POR QUE A JAVI NO LE FUNCIONABA, PERO LA FORMA CORRECTA DE HACERLO ES LA DE LAS SLIDES
 	//irradiance = vec3(1.0) * in_light /float(SAMPLES);
+
+	//irradiance = vec3(1.0, 0.0, 0.0);
 	FragColor = vec4(irradiance, 1.0 - transparency);
 	//FragColor = vec4(1.0, 0.0, 0.0, 1.0 - transparency);
 
@@ -2333,13 +2335,32 @@ void main()
 	// To know how much shadows are within light
 	for(int i = 0; i < SAMPLES; ++i)
 	{
+		//vec3 light = u_light_color;
+		vec3 D = normalize(u_light_direction);
+		vec3 L = u_light_position - current_pos;
+		float light_dist = length(L);
+		L = L/light_dist;
+
+		float LdotD = dot(-L, D);
+		// check if point inside the spotlight
+		float spot_factor = 0.0;
+		if (LdotD >= u_light_cone_cos){
+			spot_factor = pow(LdotD, u_light_cone_exp);
+		}
+		else{
+			transparency = 1.0;
+		}
+
+		float att_factor = u_light_max_distance - light_dist;
+		att_factor /= u_light_max_distance;
+		att_factor = max(att_factor, 0.0);
+		// apply quadratic attenuation
+		float att = pow(att_factor,2);
+
 		//evaluate contribution
 		//compute illumination in this point
 		float shadow = testShadowMap(current_pos);
-		vec3 light = u_light_color * shadow;
-
-		// CON ESTO PODEMOS HACER QUE FACILMENTE FUNCIONE TAMBIÉN PARA SPOLIGHT
-		//light *= att;
+		vec3 light = u_light_color * shadow * spot_factor;// * att;
 
 		//accumulate the amount of light
 		irradiance += light * transparency * (u_air_density * step_dist);
@@ -2355,9 +2376,8 @@ void main()
 		current_pos.xyz += ray_offset;
 	}
 
-	// ESTO ES SOLO POR QUE A JAVI NO LE FUNCIONABA, PERO LA FORMA CORRECTA DE HACERLO ES LA DE LAS SLIDES
-	//irradiance = vec3(1.0) * in_light /float(SAMPLES);
 	FragColor = vec4(irradiance, 1.0 - transparency);
+	//FragColor = debug_color;
 
 }
 
@@ -2368,11 +2388,18 @@ void main()
 
 in vec2 v_uv;
 
+uniform sampler2D u_gb0_texture;
+uniform sampler2D u_gb1_texture;
+uniform sampler2D u_gb2_texture;
 uniform sampler2D u_depth_texture;
+uniform sampler2D u_decal_texture;
+
 uniform vec3 u_camera_position;
 uniform mat4 u_viewprojection;
 uniform mat4 u_inverse_viewprojection;
 uniform vec2 u_iRes;
+
+uniform mat4 u_imodel;
 
 out vec4 FragColor;
 
@@ -2385,9 +2412,22 @@ void main()
 	vec4 proj_worldpos = u_inverse_viewprojection * screen_pos;
 	vec3 world_position = proj_worldpos.xyz / proj_worldpos.w;
 
-	vec4 color = vec4(1.0, 0.0, 0.0, 1.0);
+	// COGEMOS LA COORDENADA LOCAL A PARTIR DE LA DE MUNDO CON LA INVERSA DE LA MODEL
+	vec3 local_pos = (u_imodel * vec4(world_position, 1.0)).xyz;
+
+	// MIRAMOS SI ESTÁ DENTRO DE LO QUE NOS INTERESA .DE ESTA FORMA, SOLO PINTAMOS LA PARTE DEL CUBO QUE TOCA CON EL OBJETO Y PARECE QUE SE PEGUE
+	// ESTO ES ASI POR QUE EL CUBO VA DE -1 A 1 EN TODAS LAS COORDENADAS.
+	if (local_pos.x < -1.0 || local_pos.x > 1.0 ||
+		local_pos.y < -1.0 || local_pos.y > 1.0 ||
+		local_pos.z < -1.0 || local_pos.z > 1.0 )
+		discard;
+
+	vec2 decal_uv = local_pos.xy*0.5+vec2(0.5);
+	//vec4 color = vec4(1.0, 0.0, 0.0, 1.0);
+	vec4 color = texture(u_decal_texture, decal_uv);
 
 	FragColor = color;
+	//FragColor = vec4(color.xyz, 1.0);
 
 }
 

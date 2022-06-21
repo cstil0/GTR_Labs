@@ -229,6 +229,8 @@ GTR::LightEntity::LightEntity()
 	fbo = NULL;
 	shadowmap = NULL;
 	light_camera = NULL;
+
+	volumetric = false;
 }
 
 void GTR::LightEntity::renderInMenu() {
@@ -254,13 +256,14 @@ void GTR::LightEntity::renderInMenu() {
 		ImGui::SliderFloat("Cone Angle", &cone_angle, 0.0, 80);
 		ImGui::SliderFloat("Cone Exponential", &cone_exp, 0.0, 100);
 		ImGui::Checkbox("Shadows", &cast_shadows);
+		ImGui::Checkbox("Volumetric", &volumetric);
 
 	}
 	else if (light_type == LightEntity::eTypeOfLight::DIRECTIONAL){
 		ImGui::SliderFloat("Area Size", &area_size, 0.0, 2000);
 		ImGui::DragFloat3("Target", &target.x, 1, -80, 80);
 		ImGui::Checkbox("Shadows", &cast_shadows);
-
+		ImGui::Checkbox("Volumetric", &volumetric);
 	}
 	if (cast_shadows) {
 		ImGui::SliderFloat("Shadow Bias", &shadow_bias, 0.001, 0.5);
@@ -284,13 +287,19 @@ void GTR::LightEntity::configure(cJSON* json)
 	else
 		light_type = eTypeOfLight::NONE;
 
-	area_size = readJSONNumber(json, "angle", angle);
+	//angle = readJSONNumber(json, "angle", angle);
 	area_size = readJSONNumber(json, "area_size", area_size);
 	max_distance = readJSONNumber(json, "max_dist", max_distance);
 	cone_angle = readJSONNumber(json, "cone_angle", cone_angle);
 	cone_exp = readJSONNumber(json, "cone_exp", cone_angle);
 	cast_shadows = readJSONBool(json, "cast_shadows", false);
 	shadow_bias = readJSONNumber(json, "shadow_bias", shadow_bias);
+	volumetric = readJSONBool(json, "volumetric", volumetric);
+}
+
+GTR::DecalEntity::DecalEntity()
+{
+	entity_type = DECAL;
 }
 
 void GTR::DecalEntity::configure(cJSON* json)

@@ -71,7 +71,8 @@ namespace GTR {
 		Vector3 color;
 		float intensity;
 		int light_type;
-		float angle;
+		//float angle;
+		bool volumetric;
 
 		int shadow_i;
 		bool cast_shadows;
@@ -97,7 +98,7 @@ namespace GTR {
 	public:
 		std::string texture;
 
-		DecalEntity() {};
+		DecalEntity();
 		virtual void renderInMenu() {};
 		virtual void configure(cJSON* json);
 	};
