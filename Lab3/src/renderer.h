@@ -29,6 +29,7 @@ namespace GTR {
 
 	struct sReflectionProbe {
 		Vector3 pos;
+		float size = 10;
 		Texture* cubemap = NULL;
 	};
 
@@ -225,7 +226,7 @@ namespace GTR {
 		void renderMeshWithMaterial(const Matrix44 model, Mesh* mesh, GTR::Material* material, Camera* camera, int i);
 		void renderTransparentMaterial(const Matrix44 model, Mesh* mesh, GTR::Material* material, Camera* camera);
 		//Texture* screenToTexture();
-		void renderMeshWithMaterialToGBuffers(const Matrix44 model, Mesh* mesh, GTR::Material* material, Camera* camera);
+		void renderMeshWithMaterialToGBuffers(Matrix44 model, Mesh* mesh, GTR::Material* material, Camera* camera);
 		// to render flat objects for generating the shadowmaps
 		void renderFlatMesh(const Matrix44 model, Mesh* mesh, GTR::Material* material, Camera* camera);
 		void renderForward(Camera* camera, FBO* fboToRender);
@@ -262,6 +263,7 @@ namespace GTR {
 		void computeIrradianceForward(Mesh* mesh, Matrix44 model, Material* material, Camera* camera, int i);
 		
 		void generateReflectionProbes();
+		void generateReflectionProbesMesh();
 		void renderReflectionProbes(Camera* camera);
 		void captureReflectionProbe(Texture* tex, Vector3 pos);
 

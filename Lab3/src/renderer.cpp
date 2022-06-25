@@ -554,9 +554,6 @@ void Renderer::renderScene_RenderCalls(Camera* camera, FBO* fboToRender) {
 	if (show_probes_texture && probes_texture)
 		probes_texture->toViewport();
 
-	if (render_reflection_probes) {
-		renderReflectionProbes(camera);
-	}
 }
 
 //renders all the prefab
@@ -597,7 +594,7 @@ void Renderer::renderNode(const Matrix44& prefab_model, GTR::Node* node, Camera*
 }
 
 //renders a mesh given its transform and material
-void Renderer::renderMeshWithMaterial(const Matrix44 model, Mesh* mesh, GTR::Material* material, Camera* camera, int i)
+void Renderer::renderMeshWithMaterial(Matrix44 model, Mesh* mesh, GTR::Material* material, Camera* camera, int i)
 {
 	Scene* scene = Scene::instance;
 
@@ -652,8 +649,38 @@ void Renderer::renderMeshWithMaterial(const Matrix44 model, Mesh* mesh, GTR::Mat
 		// POR DEFECTO, LA TEXTURA DE REFLECTION SERÁ LA DEL SKYBOX
 		Texture* reflection = scene->skybox;
 		if (reflection_probes.size() && !is_rendering_reflections)
+		{
+
+			// ACTUALIZAR A COGER LAS PROBES CON EL ARRAY DE ENTITIES, ESTE ES CON EL ARRAY ANTIGUO
+
 			//reflection = reflection_probe->texture;
-			reflection = scene->skybox;
+			//reflection = scene->skybox;
+
+			//Vector3 objectPos = model.getTranslation(); //posición mundo del objeto
+
+			//Vector3 irr_range = end_irr - start_irr;
+			//float irr_local_pos_x = clamp(objectPos.x - start_irr.x + 0.0 * 0.1, 0.0, irr_range.x);
+			//float irr_local_pos_y = clamp(objectPos.y - start_irr.y - 1.0 * 0.1, 0.0, irr_range.y);
+			//float irr_local_pos_z = clamp(objectPos.z - start_irr.z + 0.0 * 0.1, 0.0, irr_range.z);
+			//Vector3 irr_local_pos = Vector3(irr_local_pos_x, irr_local_pos_y, irr_local_pos_z);  //offset a little
+
+			////convert from world pos to grid pos
+			//Vector3 irr_norm_pos = Vector3(irr_local_pos.x / delta_irr.x, irr_local_pos.y / delta_irr.y, irr_local_pos.z / delta_irr.z);
+			////floor instead of round
+			//Vector3 local_indices = Vector3(floor(irr_norm_pos.x), floor(irr_norm_pos.y), floor(irr_norm_pos.z));
+
+			////now we have the interpolation factors
+			//Vector3 factors = irr_norm_pos - local_indices;
+
+			////compute in which row is the probe stored
+			//float row = local_indices.x + local_indices.y * dim_irr.x + local_indices.z * dim_irr.x * dim_irr.y;
+			reflection = reflection_probes[0]->cubemap;
+
+			// SI ES EL SUELO HACEMOS PLANAR REFLECIONS (QUE YA SE RENDERIZAN AL PRINCIPIO, ASÍ QUE ES NO HACER NADA) CON LO DE SABER EN QUE ENTITY ESTAMOS CON EL NODO PADRE
+			// PREGUNTA DISCORD
+
+
+		}
 
 		shader->setUniform("u_skybox_texture", reflection, 7);
 		shader->setUniform("u_scene_reflections", 1);
@@ -933,6 +960,9 @@ void GTR::Renderer::renderForward(Camera* camera, FBO* fboToRender = NULL)
 			renderIrradianceProbe(irradiance_probes[i].pos, 2, irradiance_probes[i].sh.coeffs[0].v);
 	}
 
+	if (render_reflection_probes) {
+		renderReflectionProbes(camera);
+	}
 
 	// gamma correction needs to be applyied after rendering all lights (only in multipass)
 	fboToRender->unbind();
@@ -2063,12 +2093,11 @@ void Renderer::computeIrradianceForward(Mesh* mesh, Matrix44 model, Material* ma
 	shader_irr->disable();
 }
 
-void GTR::Renderer::generateReflectionProbes(){
+void GTR::Renderer::generateReflectionProbesMesh(){
 	Scene* scene = Scene::instance;
 
 	if (reflection_fbo == NULL)
 		reflection_fbo->create(Application::instance->window_width, Application::instance->window_height, 1, GL_RGBA, GL_FLOAT, true);
-
 
 	reflection_probes.clear();
 	glClearColor(0.0, 0.0, 0.0, 1.0);
@@ -2079,7 +2108,7 @@ void GTR::Renderer::generateReflectionProbes(){
 	start_irr = Vector3(-300, 5, -400);
 	end_irr = Vector3(300, 150, 400);
 	//define how many probes you want per dimension
-	dim_irr = Vector3(10, 4, 10);
+	dim_irr = Vector3(5, 2, 5);
 	//compute the vector from one corner to the other
 	delta_irr = Vector3(end_irr - start_irr);
 
@@ -2124,9 +2153,58 @@ void GTR::Renderer::generateReflectionProbes(){
 	std::cout << "DONE" << std::endl;
 }
 
+void GTR::Renderer::generateReflectionProbes() {
+	Scene* scene = Scene::instance;
+
+	if (reflection_fbo == NULL)
+		reflection_fbo->create(Application::instance->window_width, Application::instance->window_height, 1, GL_RGBA, GL_FLOAT, true);
+
+	reflection_probes.clear();
+	glClearColor(0.0, 0.0, 0.0, 1.0);
+	glClear(GL_COLOR_BUFFER_BIT);
+
+	for (int i = 0; i < scene->entities.size(); i++)
+	{
+		if (scene->entities[i]->entity_type == eEntityType::PREFAB)
+		{
+			PrefabEntity* currentEntity = (PrefabEntity*)scene->entities[i];
+			Vector3 center = currentEntity->prefab->bounding.center;
+			Vector3 centerWorld = currentEntity->model * center;
+			Vector3 halfSize = currentEntity->prefab->bounding.halfsize;
+
+			sReflectionProbe* p = new sReflectionProbe();
+			float posY = centerWorld.y + halfSize.y + p->size;
+			p->pos.set(centerWorld.x, posY, centerWorld.z);
+
+			if (!p->cubemap) {
+				p->cubemap = new Texture();
+				p->cubemap->createCubemap(512, 512, NULL, GL_RGB, GL_UNSIGNED_INT, false);
+			}
+			reflection_probes.push_back(p);
+		}
+	}
+
+	std::cout << std::endl;
+	//now compute the coeffs for every probe
+	for (int iP = 0; iP < reflection_probes.size(); ++iP)
+	{
+		int probe_index = iP;
+		captureReflectionProbe(reflection_probes[iP]->cubemap, reflection_probes[iP]->pos);
+		std::cout << "Generating probes: " << iP << "/" << reflection_probes.size() << "\r";
+	}
+	std::cout << std::endl;
+	std::cout << "DONE" << std::endl;
+}
+
 	// Reflection functions
 void GTR::Renderer::renderReflectionProbes(Camera* camera)
 {
+	glEnable(GL_CULL_FACE);
+	glEnable(GL_DEPTH_TEST);
+
+	// ESTO ES PARA HACER COMO UN BLURREADO EN LOS BORDES DEL CUBEMAP Y QUE NO SE VEAN ARTEFACTOS
+	glEnable(GL_TEXTURE_CUBE_MAP_SEAMLESS);
+
 	Scene* scene = Scene::instance;
 
 	Shader* shader = Shader::Get("reflection_probe");
@@ -2135,29 +2213,26 @@ void GTR::Renderer::renderReflectionProbes(Camera* camera)
 	shader->setUniform("u_viewprojection", camera->viewprojection_matrix);
 	shader->setUniform("u_camera_pos", camera->eye);
 
-	glEnable(GL_CULL_FACE);
-	glEnable(GL_DEPTH_TEST);
-
-	// ESTO ES PARA HACER COMO UN BLURREADO EN LOS BORDES DEL CUBEMAP Y QUE NO SE VEAN ARTEFACTOS
-	glEnable(GL_TEXTURE_CUBE_MAP_SEAMLESS);
-
 	// ES MEJOR GUARDAR LAS REFLECTION PROBES A PARTE CUANDO SACAMOS LOS RENDER CALLS EN UN VECTOR
+	if (reflection_probes.size() == 50)
+		int i = 0;
+
+	int size = 10;
 	for (int i = 0; i < reflection_probes.size(); i++) {
 		sReflectionProbe* probe = reflection_probes[i];
 		if (!probe->cubemap)
 			continue;
 
 		// HARCODEADO
-		int size = 10;
 		Matrix44 model;
 		model.setTranslation(probe->pos.x, probe->pos.y, probe->pos.z);
 		model.scale(size, size, size);
 
 		shader->setUniform("u_model", model);
+		shader->setUniform("u_model", model);
 		shader->setUniform("u_texture", probe->cubemap, 0);
 
 		mesh->render(GL_TRIANGLES);
-		shader->disable();
 		glEnable(GL_DEPTH_TEST);
 	}
 

@@ -111,7 +111,7 @@ void Application::render(void)
 	//renderer->renderScene(scene, camera);
 
 	// Use the renderCalls function to render the scene with sorted objects
-	if (renderer->planar_reflection)
+	if (renderer->planar_reflection || renderer->scene_reflection)
 		renderer->renderSceneWithReflection(camera);
 	else
 		renderer->renderScene_RenderCalls(camera, renderer->screen_fbo);
