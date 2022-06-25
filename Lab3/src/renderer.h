@@ -108,6 +108,11 @@ namespace GTR {
 		Texture* shadowmap;
 		Texture* screen_texture;
 		Texture* probes_texture;
+		Texture* postFX_textureA;
+		Texture* postFX_textureB;
+		Texture* postFX_textureC;
+		Texture* postFX_textureD;
+
 		// debuging use -- borrar
 		Texture* irradiance_texture;
 		int width_shadowmap; 
@@ -171,6 +176,22 @@ namespace GTR {
 		// volumetric
 		bool volumetric;
 
+		// PostFX
+		bool postFX;
+		bool saturation;
+		bool lens_distortion;
+		bool contrast;
+		bool simple_glow;
+
+		float saturation_intensity;
+		float vigneting_intensity;
+		float contrast_intensity;
+		float simglow_blur_factor;
+		float simglow_mix_factor;
+		float simglow_threshold;
+
+		Matrix44 vp_matrix_last;
+
 		Renderer();
 
 		// -- Rendercalls manager functions --
@@ -217,7 +238,7 @@ namespace GTR {
 		void generateGBuffers(Camera* camera);
 		void generateSSAO(Camera* camera, Matrix44 inv_vp, int width, int height);
 		void applyIllumination_deferred(Camera* camera, Matrix44 inv_vp, int width, int height);
-		void applyColorCorrection();
+		void applyColorCorrection(Texture* final_texture);
 
 		// -- Upload to shader functions --
 
@@ -243,6 +264,8 @@ namespace GTR {
 		void generateReflectionProbes();
 		void renderReflectionProbes(Camera* camera);
 		void captureReflectionProbe(Texture* tex, Vector3 pos);
+
+		Texture* applyFX(Camera* camera, Texture* color_texture, Texture* depth_texture);
 
 		void reloadRenderer();
 };

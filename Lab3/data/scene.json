@@ -127,7 +127,7 @@
 			"light_type":"SPOT",
 			"cast_shadows": true,
 			"shadow_bias": 0.015,
-			"volumetric": true
+			"volumetric": false
 		},
 		{
 			"name":"spot2",
@@ -142,7 +142,7 @@
 			"light_type":"SPOT",
 			"cast_shadows": true,
 			"shadow_bias": 0.037,
-			"volumetric": true
+			"volumetric": false
 		},
 		{
 			"name":"spot3",

@@ -41,6 +41,10 @@ GTR::Renderer::Renderer()
 	width_shadowmap = 2048;
 	height_shadowmap = 2048;
 	irradiance_texture = NULL;
+	postFX_textureA = NULL;
+	postFX_textureB = NULL;
+	postFX_textureC = NULL;
+	postFX_textureD = NULL;
 
 	// Debug parameters
 	show_shadowmap = false;
@@ -52,7 +56,7 @@ GTR::Renderer::Renderer()
 	show_probes = false;
 	shadow_flag = true;
 
-	pipeline = FORWARD;
+	pipeline = DEFERRED;
 	typeOfRender = eRenderPipeline::MULTIPASS;
 
 	// Color correction
@@ -93,7 +97,20 @@ GTR::Renderer::Renderer()
 	//generateProbes(Scene::instance);
 
 	// volumetric
-	volumetric = true;
+	volumetric = false;
+
+	// postFX
+	saturation = true;
+	lens_distortion = false;
+	contrast = true;
+	simple_glow = true;
+
+	saturation_intensity = 1.0;
+	vigneting_intensity = 0.0;
+	contrast_intensity = 1.0;
+	simglow_blur_factor = 1.0;
+	simglow_mix_factor = 1.0;
+	simglow_threshold = 0.9;
 
 	// decals
 }
@@ -986,6 +1003,15 @@ void GTR::Renderer::renderDeferred(Camera* camera)
 			false);
 	}
 
+	if (!postFX_textureA)
+		postFX_textureA = new Texture(width, height, GL_RGB, GL_FLOAT);
+	if (!postFX_textureB)
+		postFX_textureB = new Texture(width, height, GL_RGB, GL_FLOAT);
+	if (!postFX_textureC)
+		postFX_textureC = new Texture(width, height, GL_RGB, GL_FLOAT);
+	if (!postFX_textureD)
+		postFX_textureD = new Texture(width, height, GL_RGB, GL_FLOAT);
+
 	// DICE QUE TAMBIÉN PODRÍAMOS CLONAR LAS TEXTURAS DEL GBUFFERS PARA NO TENER QUE CREAR OTRO FBO
 	if (!decals_fbo) {
 		decals_fbo = new FBO();
@@ -1160,8 +1186,10 @@ void GTR::Renderer::renderDeferred(Camera* camera)
 		}
 	}
 
+	Texture* finalFX = applyFX(camera, illumination_fbo->color_textures[0], gbuffers_fbo->depth_texture);
+
 	glDisable(GL_BLEND);
-	applyColorCorrection();
+	applyColorCorrection(finalFX);
 	
 	if (show_buffers)
 		showGBuffers(Application::instance->window_width, Application::instance->window_height, camera);
@@ -1272,6 +1300,7 @@ void GTR::Renderer::applyIllumination_deferred(Camera* camera, Matrix44 inv_vp, 
 	shader->setUniform("u_ambient_light", scene->ambient_light);
 	shader->setUniform("u_gb0_texture", gbuffers_fbo->color_textures[0], 0);
 	shader->setUniform("u_gb1_texture", gbuffers_fbo->color_textures[1], 1);
+	shader->setUniform("u_gb2_texture", gbuffers_fbo->color_textures[2], 2);
 	shader->setUniform("u_depth_texture", gbuffers_fbo->depth_texture, 4);
 	if (ssao)
 		shader->setUniform("u_ssao_texture", ssao_fbo->color_textures[0], 5);
@@ -1334,10 +1363,10 @@ void GTR::Renderer::applyIllumination_deferred(Camera* camera, Matrix44 inv_vp, 
 	for (int i = 0; i < lights.size(); i++) {
 		// emissive texture -- add it only once
 		if (i == 0)
-			shader->setUniform("u_gb2_texture", gbuffers_fbo->color_textures[2], 2);
+			shader->setUniform("u_emissive_flag", 1);
 		else
 		{
-			shader->setUniform("u_gb2_texture", Texture::getBlackTexture(), 2);
+			shader->setUniform("u_emissive_flag", 0);
 		}
 
 		LightEntity* light = lights[i];
@@ -1392,13 +1421,13 @@ void GTR::Renderer::applyIllumination_deferred(Camera* camera, Matrix44 inv_vp, 
 }
 
 // to apply color correction given the scene texture
-void GTR::Renderer::applyColorCorrection()
+void GTR::Renderer::applyColorCorrection(Texture* final_texture)
 {
 	// apply color correction
 	Shader* col_corr = Shader::Get("col_corr");
 	col_corr->enable();
 	col_corr->setUniform("u_gamma", gamma);
-	col_corr->setUniform("u_screen_texture", illumination_fbo->color_textures[0], 0);
+	col_corr->setUniform("u_screen_texture", final_texture, 0);
 	col_corr->setUniform("u_tonemapping", tonemapping);
 	col_corr->setUniform("u_lumwhite2", lumwhite2);
 	col_corr->setUniform("u_average_lum", averagelum);
@@ -1472,7 +1501,7 @@ void Renderer::setTextures(GTR::Material* material, Shader* shader) {
 		shader->setUniform("u_occlusion_texture", occlusion_texture, 2);
 	// white texture will take into account all light, namely no occlusion
 	else
-		shader->setUniform("u_occlusion_texture", Texture::getWhiteTexture(), 2);
+		shader->setUniform("u_occlusion_texture", met_rough_texture ? Texture::getBlackTexture() : Texture::getWhiteTexture(), 2);
 
 	float zero_factor = 0.0;
 	if (met_rough_texture) {
@@ -2165,6 +2194,140 @@ void GTR::Renderer::captureReflectionProbe(Texture* tex, Vector3 pos)
 	//generate the mipmaps
 	glEnable(GL_TEXTURE_CUBE_MAP_SEAMLESS);
 	tex->generateMipmaps();
+}
+
+Texture* GTR::Renderer::applyFX(Camera* camera, Texture* color_texture, Texture* depth_texture)
+{
+	Texture* current_texture = color_texture;
+	Shader* fxshader = NULL;
+
+	FBO* fbo = Texture::getGlobalFBO(postFX_textureA);
+	fbo->bind();
+	Matrix44 inv_vp = camera->viewprojection_matrix;
+	inv_vp.inverse();
+
+	fxshader = Shader::Get("motionblur");
+	fxshader->enable();
+	fxshader->setUniform("u_depth_texture", depth_texture, 1);
+	fxshader->setUniform("u_inverse_viewprojection", inv_vp);
+	fxshader->setUniform("u_viewprojection_last", vp_matrix_last);
+	current_texture->toViewport(fxshader);
+	fbo->unbind();
+	current_texture = postFX_textureA;
+	std::swap(postFX_textureA, postFX_textureB);
+
+	vp_matrix_last = camera->viewprojection_matrix;
+
+	//// -- Greyscale --
+	//if (saturation) {
+	//	// start painting in textureA reading from current_texture
+	//	FBO* fbo = Texture::getGlobalFBO(postFX_textureA);
+	//	fbo->bind();
+	//	fxshader = Shader::Get("saturation");
+	//	fxshader->enable();
+	//	fxshader->setUniform("u_saturation", saturation_intensity);
+	//	fxshader->setUniform("u_vigneting", vigneting_intensity);
+	//	current_texture->toViewport(fxshader);
+	//	fbo->unbind();
+	//	// now the current is textureA since it is the one that has the latest fx
+	//	current_texture = postFX_textureA;
+	//	// INTERCAMBIAMOS LAS TEXTURAS A Y B. AHORA LA A TIENE LA INFO DE LA B
+	//	std::swap(postFX_textureA, postFX_textureB);
+	//}
+
+
+	//// -- Lens distortion --
+	//if (lens_distortion) {
+	//	fbo = Texture::getGlobalFBO(postFX_textureA);
+	//	fbo->bind();
+	//	fxshader = Shader::Get("lens_distortion");
+	//	current_texture->toViewport(fxshader);
+	//	fbo->unbind();
+
+	//	current_texture = postFX_textureA;
+	//	std::swap(postFX_textureA, postFX_textureB);
+	//}
+
+	//// -- Contrast --
+	//if (contrast) {
+	//	fbo = Texture::getGlobalFBO(postFX_textureA);
+	//	fbo->bind();
+	//	fxshader = Shader::Get("contrast");
+	//	fxshader->enable();
+	//	fxshader->setUniform("u_intensity", contrast_intensity);
+	//	current_texture->toViewport(fxshader);
+	//	fbo->unbind();
+
+	//	current_texture = postFX_textureA;
+	//	std::swap(postFX_textureA, postFX_textureB);
+	//}
+
+	//// ANTES DE HACER EL BLUR, VAMOS A GUARDAR LA TEXTURA EN C YA QUE EL BLUR MODIFICARÁ TANTO A COMO B
+	//if (simple_glow) {
+	//	fbo = Texture::getGlobalFBO(postFX_textureC);
+	//	fbo->bind();
+	//	fxshader = Shader::Get("contrast");
+	//	fxshader->enable();
+	//	fxshader->setUniform("u_intensity", 1.0f);
+	//	current_texture->toViewport(fxshader);
+	//	fbo->unbind();
+	//	current_texture = postFX_textureC;
+
+	//	// LA B AQUÍ SIGUE TENIENDO LO MISMO QUE C, NO PODEMOS APLICARLE A ELLA EL THRESHOLD??
+	//	fbo = Texture::getGlobalFBO(postFX_textureD);
+	//	fbo->bind();
+	//	fxshader = Shader::Get("threshold");
+	//	fxshader->enable();
+	//	fxshader->setUniform("u_threshold", simglow_threshold);
+	//	current_texture->toViewport(fxshader);
+	//	fbo->unbind();
+	//	current_texture = postFX_textureD;
+
+	//	for (int i = 0; i < 4; i++) {
+	//		fbo = Texture::getGlobalFBO(postFX_textureA);
+	//		fbo->bind();
+	//		fxshader = Shader::Get("blur");
+	//		fxshader->enable();
+	//		fxshader->setUniform("u_intensity", 1.0f);
+	//		// EL OFFSET SON LOS PIXELES QUE NOS QUEREMOS MOVER PARA APLICAR EL BLUR -- TIENE QUE SER EL IRES, ES DECIR LA INVERSA DE LO QUE MIDA LA TEXTURA
+	//		// DE MOMENTO PONEMOS SOLO EN X PARA MOVERNOS SOLO HORIZONTALMENTE
+	//		fxshader->setUniform("u_offset", vec2(pow(1.0, i)/current_texture->width, 0.0) * simglow_blur_factor);
+	//		current_texture->toViewport(fxshader);
+	//		fbo->unbind();
+
+	//		// SIN HACER SWAP AHORA ESCRIBIMOS EN LA TEXTURA B PARA APLICAR EL BLUR VERTICAL
+	//		fbo = Texture::getGlobalFBO(postFX_textureB);
+	//		fbo->bind();
+	//		fxshader = Shader::Get("blur");
+	//		fxshader->enable();
+	//		fxshader->setUniform("u_intensity", 1.0f);
+	//		// EL OFFSET SON LOS PIXELES QUE NOS QUEREMOS MOVER PARA APLICAR EL BLUR -- TIENE QUE SER EL IRES, ES DECIR LA INVERSA DE LO QUE MIDA LA TEXTURA
+	//		// DE MOMENTO PONEMOS SOLO EN X PARA MOVERNOS SOLO HORIZONTALMENTE
+	//		fxshader->setUniform("u_offset", vec2(0.0, pow(1.0, i) / current_texture->height) * simglow_blur_factor);
+	//		// read from texture A
+	//		postFX_textureA->toViewport(fxshader);
+	//		fbo->unbind();
+
+	//		current_texture = postFX_textureB;
+	//	}
+	//	std::swap(postFX_textureA, postFX_textureB);
+
+	//	// Mix blur & normal
+	//	fbo = Texture::getGlobalFBO(postFX_textureA);
+	//	fbo->bind();
+	//	fxshader = Shader::Get("mix");
+	//	fxshader->enable();
+	//	// HARCODEADO
+	//	fxshader->setUniform("u_intensity", simglow_mix_factor);
+	//	fxshader->setUniform("u_textureB", postFX_textureC, 1);
+	//	current_texture->toViewport(fxshader);
+	//	fbo->unbind();
+	//	current_texture = postFX_textureA;
+	//	std::swap(postFX_textureA, postFX_textureB);
+	//}
+	
+
+	return current_texture;
 }
 
 

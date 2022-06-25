@@ -324,7 +324,22 @@ void Application::renderDebugGUI(void)
 		ImGui::SliderFloat("Air Density", &scene->air_density, 0.0, 10);
 		ImGui::TreePop();
 	}
-
+	if (ImGui::TreeNode("PostFX")) {
+		ImGui::Checkbox("Greyscale", &renderer->saturation);
+		ImGui::Checkbox("Lens distortion", &renderer->lens_distortion);
+		ImGui::Checkbox("Contrast", &renderer->contrast);
+		ImGui::Checkbox("Simple Glow", &renderer->simple_glow);
+		if (ImGui::TreeNode("PostFX Parameters")) {
+			ImGui::SliderFloat("Saturation Intensity", &renderer->saturation_intensity, 0.0, 3.0);
+			ImGui::SliderFloat("Vigneting Intensity", &renderer->vigneting_intensity, 0.0, 3.0);
+			ImGui::SliderFloat("Contrast Intensity", &renderer->contrast_intensity, 0.0, 3.0);
+			ImGui::SliderFloat("Blur Factor Simple Glow ", &renderer->simglow_blur_factor, 0.0, 3.0);
+			ImGui::SliderFloat("Mix Factor Simple Glow", &renderer->simglow_mix_factor, 0.0, 3.0);
+			ImGui::SliderFloat("Threshold Simple Glow", &renderer->simglow_threshold, 0.0, 3.0);
+			ImGui::TreePop();
+		}
+		ImGui::TreePop();
+	}
 	//add info to the debug panel about the camera
 	if (ImGui::TreeNode(camera, "Camera")) {
 		camera->renderInMenu();
