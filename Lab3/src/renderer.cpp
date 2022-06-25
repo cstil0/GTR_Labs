@@ -966,6 +966,8 @@ void GTR::Renderer::renderDeferred(Camera* camera)
 	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 	checkGLErrors();
 
+	renderSkybox(camera, scene->skybox);
+
 	int width = Application::instance->window_width;
 	int height = Application::instance->window_height;
 
