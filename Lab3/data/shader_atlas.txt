@@ -979,15 +979,15 @@ void main()
 	// Occlusion can be either in the met_rou or occlusion texture
 	occlusion_factor += texture( u_occlusion_texture, v_uv ).x;
 
-	// Metalness
-	float metal_factor = texture(u_met_rough_texture, v_uv).y + u_metallic_factor;
 	// Roughness
-	float roughness_factor = texture(u_met_rough_texture, v_uv).z + u_roughness_factor;
+	float roughness_factor = texture(u_met_rough_texture, v_uv).y + u_metallic_factor;
+	// Metalness
+	float metal_factor = texture(u_met_rough_texture, v_uv).z + u_roughness_factor;
 
 	// don't need to save the alpha
-	GB0 = vec4(color.xyz, metal_factor);
+	GB0 = vec4(color.xyz, roughness_factor);
 	// to recover negative values
-	GB1 = vec4(N * 0.5 + vec3(0.5), roughness_factor);
+	GB1 = vec4(N * 0.5 + vec3(0.5), metal_factor);
 	//GB2 = vec4(occlusion_factor);
 	GB2 = vec4(emissive, occlusion_factor);
 
@@ -1513,8 +1513,8 @@ void main()
 
 	vec4 color = vec4(gb0_color.xyz, 1.0);
 
-	float metalness = gb0_color.w;
-	float roughness = gb1_color.w;
+	float metalness = gb1_color.w;
+	float roughness = gb0_color.w;
 	float occlusion = gb2_color.w;
 
 	vec3 ambient_light = u_ambient_light;

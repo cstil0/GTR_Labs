@@ -16,6 +16,7 @@
 #include <algorithm>
 #include <vector>  
 #include <cmath>
+#include <math.h>
 
 
 using namespace GTR;
@@ -649,7 +650,23 @@ void Renderer::renderMeshWithMaterial(Matrix44 model, Mesh* mesh, GTR::Material*
 		// POR DEFECTO, LA TEXTURA DE REFLECTION SERÁ LA DEL SKYBOX
 		Texture* reflection = scene->skybox;
 		if (reflection_probes.size() && !is_rendering_reflections)
-		{
+		{	
+			int nearest_index = -1;
+			float nearest_distance = 1000000.0;
+			// search which probe is the nearest one
+			for (int i = 0; i < reflection_probes.size(); i++) {
+				Vector3 mesh_position = model.getTranslation();
+				Vector3 probe_position = reflection_probes[i]->pos;
+				Vector3 distance = mesh_position - probe_position;
+				float mod_distance = pow(distance.x, 2.0) + pow(distance.y, 2.0) + pow(distance.z, 2.0);
+				if (mod_distance < nearest_distance) {
+					nearest_distance = mod_distance;
+					nearest_index = i;
+				}
+			}
+			reflection = reflection_probes[nearest_index]->cubemap;
+			//reflection = reflection_probes[0]->cubemap;
+
 
 			// ACTUALIZAR A COGER LAS PROBES CON EL ARRAY DE ENTITIES, ESTE ES CON EL ARRAY ANTIGUO
 
@@ -674,7 +691,7 @@ void Renderer::renderMeshWithMaterial(Matrix44 model, Mesh* mesh, GTR::Material*
 
 			////compute in which row is the probe stored
 			//float row = local_indices.x + local_indices.y * dim_irr.x + local_indices.z * dim_irr.x * dim_irr.y;
-			reflection = reflection_probes[0]->cubemap;
+			//reflection = reflection_probes[0]->cubemap;
 
 			// SI ES EL SUELO HACEMOS PLANAR REFLECIONS (QUE YA SE RENDERIZAN AL PRINCIPIO, ASÍ QUE ES NO HACER NADA) CON LO DE SABER EN QUE ENTITY ESTAMOS CON EL NODO PADRE
 			// PREGUNTA DISCORD
@@ -2172,15 +2189,57 @@ void GTR::Renderer::generateReflectionProbes() {
 			Vector3 centerWorld = currentEntity->model * center;
 			Vector3 halfSize = currentEntity->prefab->bounding.halfsize;
 
-			sReflectionProbe* p = new sReflectionProbe();
-			float posY = centerWorld.y + halfSize.y + p->size;
-			p->pos.set(centerWorld.x, posY, centerWorld.z);
+			// SE PUEDE HACER UN FOR PARA CADA LADO DEL OBJETO
+			sReflectionProbe* p1 = new sReflectionProbe();
+			float posY = centerWorld.y + halfSize.y + p1->size;
+			p1->pos.set(centerWorld.x, posY, centerWorld.z);
 
-			if (!p->cubemap) {
-				p->cubemap = new Texture();
-				p->cubemap->createCubemap(512, 512, NULL, GL_RGB, GL_UNSIGNED_INT, false);
+			if (!p1->cubemap) {
+				p1->cubemap = new Texture();
+				p1->cubemap->createCubemap(512, 512, NULL, GL_RGB, GL_UNSIGNED_INT, false);
 			}
-			reflection_probes.push_back(p);
+			reflection_probes.push_back(p1);
+
+			sReflectionProbe* p2 = new sReflectionProbe();
+			float posX = centerWorld.x + halfSize.x + p2->size;
+			p2->pos.set(posX, centerWorld.y, centerWorld.z);
+
+			if (!p2->cubemap) {
+				p2->cubemap = new Texture();
+				p2->cubemap->createCubemap(512, 512, NULL, GL_RGB, GL_UNSIGNED_INT, false);
+			}
+			reflection_probes.push_back(p2);
+
+			sReflectionProbe* p3 = new sReflectionProbe();
+			posX = centerWorld.x - halfSize.y + p3->size;
+			p3->pos.set(posX, centerWorld.y, centerWorld.z);
+
+			if (!p3->cubemap) {
+				p3->cubemap = new Texture();
+				p3->cubemap->createCubemap(512, 512, NULL, GL_RGB, GL_UNSIGNED_INT, false);
+			}
+			reflection_probes.push_back(p3);
+
+			sReflectionProbe* p4 = new sReflectionProbe();
+			float posZ = centerWorld.z + halfSize.z + p4->size;
+			p4->pos.set(centerWorld.x, centerWorld.y, posZ);
+
+			if (!p4->cubemap) {
+				p4->cubemap = new Texture();
+				p4->cubemap->createCubemap(512, 512, NULL, GL_RGB, GL_UNSIGNED_INT, false);
+			}
+			reflection_probes.push_back(p4);
+
+			sReflectionProbe* p5 = new sReflectionProbe();
+			posZ = centerWorld.z + halfSize.z + p5->size;
+			p5->pos.set(centerWorld.x, centerWorld.y, posZ);
+
+			if (!p5->cubemap) {
+				p5->cubemap = new Texture();
+				p5->cubemap->createCubemap(512, 512, NULL, GL_RGB, GL_UNSIGNED_INT, false);
+			}
+			reflection_probes.push_back(p5);
+
 		}
 	}
 
