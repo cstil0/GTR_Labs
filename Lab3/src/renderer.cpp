@@ -1238,7 +1238,7 @@ void GTR::Renderer::renderDeferred(Camera* camera)
 	reflections_shader->setUniform("u_screen_texture", illumination_fbo->color_textures[0], 0);
 
 
-	quad->render(GL_TRIANGLES);
+	//quad->render(GL_TRIANGLES);
 	reflection_fbo->unbind();
 
 	// METER EN UNA FUNCIÓN
@@ -1305,16 +1305,17 @@ void GTR::Renderer::renderDeferred(Camera* camera)
 			}
 			volumetric_fbo->unbind();
 
-			reflection_fbo->bind();
+			illumination_fbo->bind();
+			//reflection_fbo->bind();
 			glEnable(GL_BLEND);
 			glBlendFunc(GL_SRC_ALPHA, GL_ONE);
 			volumetric_fbo->color_textures[0]->toViewport();
 			glDisable(GL_BLEND);
-			reflection_fbo->unbind();
+			illumination_fbo->unbind();
 		}
 	}
 
-	Texture* finalFX = applyFX(camera, reflection_fbo->color_textures[0], gbuffers_fbo->depth_texture);
+	Texture* finalFX = applyFX(camera, illumination_fbo->color_textures[0], gbuffers_fbo->depth_texture);
 
 	glDisable(GL_BLEND);
 	applyColorCorrection(finalFX);
@@ -1331,7 +1332,8 @@ void GTR::Renderer::renderDeferred(Camera* camera)
 	glDisable(GL_CULL_FACE);
 	glFrontFace(GL_CCW);
 
-	reflection_fbo->color_textures[0]->toViewport();
+	//reflection_fbo->color_textures[0]->toViewport();
+	//finalFX->toViewport();
 	//if (scene_reflection && reflection_probes.size()) {
 	//	//glEnable(GL_BLEND);
 	//	//glBlendFunc(GL_SRC_ALPHA, GL_ONE);
@@ -2584,32 +2586,36 @@ Texture* GTR::Renderer::applyFX(Camera* camera, Texture* color_texture, Texture*
 	//	fbo->unbind();
 	//	current_texture = postFX_textureD;
 
-	//	for (int i = 0; i < 4; i++) {
-	//		fbo = Texture::getGlobalFBO(postFX_textureA);
-	//		fbo->bind();
-	//		fxshader = Shader::Get("blur");
-	//		fxshader->enable();
-	//		fxshader->setUniform("u_intensity", 1.0f);
-	//		// EL OFFSET SON LOS PIXELES QUE NOS QUEREMOS MOVER PARA APLICAR EL BLUR -- TIENE QUE SER EL IRES, ES DECIR LA INVERSA DE LO QUE MIDA LA TEXTURA
-	//		// DE MOMENTO PONEMOS SOLO EN X PARA MOVERNOS SOLO HORIZONTALMENTE
-	//		fxshader->setUniform("u_offset", vec2(pow(1.0, i)/current_texture->width, 0.0) * simglow_blur_factor);
-	//		current_texture->toViewport(fxshader);
-	//		fbo->unbind();
+	//for (int i = 0; i < 4; i++) {
+	fbo = Texture::getGlobalFBO(postFX_textureA);
+	fbo->bind();
+	fxshader = Shader::Get("blur");
+	fxshader->enable();
+	fxshader->setUniform("u_intensity", simglow_blur_factor);
+	//fxshader->setUniform("u_intensity", 1.0f);
+	// EL OFFSET SON LOS PIXELES QUE NOS QUEREMOS MOVER PARA APLICAR EL BLUR -- TIENE QUE SER EL IRES, ES DECIR LA INVERSA DE LO QUE MIDA LA TEXTURA
+	// DE MOMENTO PONEMOS SOLO EN X PARA MOVERNOS SOLO HORIZONTALMENTE
+	fxshader->setUniform("u_offset", vec2(1/Application::instance->window_width, 0.0));
+	//fxshader->setUniform("u_offset", vec2(pow(1.0, i)/current_texture->width, 0.0) * simglow_blur_factor);
+	current_texture->toViewport(fxshader);
+	fbo->unbind();
 
-	//		// SIN HACER SWAP AHORA ESCRIBIMOS EN LA TEXTURA B PARA APLICAR EL BLUR VERTICAL
-	//		fbo = Texture::getGlobalFBO(postFX_textureB);
-	//		fbo->bind();
-	//		fxshader = Shader::Get("blur");
-	//		fxshader->enable();
-	//		fxshader->setUniform("u_intensity", 1.0f);
-	//		// EL OFFSET SON LOS PIXELES QUE NOS QUEREMOS MOVER PARA APLICAR EL BLUR -- TIENE QUE SER EL IRES, ES DECIR LA INVERSA DE LO QUE MIDA LA TEXTURA
-	//		// DE MOMENTO PONEMOS SOLO EN X PARA MOVERNOS SOLO HORIZONTALMENTE
-	//		fxshader->setUniform("u_offset", vec2(0.0, pow(1.0, i) / current_texture->height) * simglow_blur_factor);
-	//		// read from texture A
-	//		postFX_textureA->toViewport(fxshader);
-	//		fbo->unbind();
+	// SIN HACER SWAP AHORA ESCRIBIMOS EN LA TEXTURA B PARA APLICAR EL BLUR VERTICAL
+	fbo = Texture::getGlobalFBO(postFX_textureB);
+	fbo->bind();
+	fxshader = Shader::Get("blur");
+	fxshader->enable();
+	fxshader->setUniform("u_intensity", simglow_blur_factor);
+	//fxshader->setUniform("u_intensity", 1.0f);
+	// EL OFFSET SON LOS PIXELES QUE NOS QUEREMOS MOVER PARA APLICAR EL BLUR -- TIENE QUE SER EL IRES, ES DECIR LA INVERSA DE LO QUE MIDA LA TEXTURA
+	// DE MOMENTO PONEMOS SOLO EN X PARA MOVERNOS SOLO HORIZONTALMENTE
+	fxshader->setUniform("u_offset", vec2(0.0, 1 / Application::instance->window_height));
+	//fxshader->setUniform("u_offset", vec2(0.0, pow(1.0, i) / current_texture->height) * simglow_blur_factor);
+	// read from texture A
+	postFX_textureA->toViewport(fxshader);
+	fbo->unbind();
 
-	//		current_texture = postFX_textureB;
+	current_texture = postFX_textureB;
 	//	}
 	//	std::swap(postFX_textureA, postFX_textureB);
 
