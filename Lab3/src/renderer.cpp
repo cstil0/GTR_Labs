@@ -1223,23 +1223,22 @@ void GTR::Renderer::renderDeferred(Camera* camera)
 			//glEnable(GL_BLEND);
 			//illumination_fbo->unbind();
 		}
+		// FUERA
 		reflections_shader->setUniform("u_scene_reflections", 1);
-	}
-	else {
-		//reflections_shader->setUniform("u_screen_texture", illumination_fbo->color_textures[0], 0);
-		reflections_shader->setUniform("u_scene_reflections", 0);
-		reflections_shader->setUniform("u_skybox_texture", Texture::getBlackTexture(), 4);
+		// CREO QUE NO ES NECESARIO
+		reflections_shader->setUniform("u_gb0_texture", gbuffers_fbo->color_textures[0], 2);
+		if (gamma)
+			reflections_shader->setUniform("u_gamma", 1);
+		else
+			reflections_shader->setUniform("u_gamma", 0);
+		reflections_shader->setUniform("u_screen_texture", illumination_fbo->color_textures[0], 0);
 	}
 
-	reflections_shader->setUniform("u_gb0_texture", gbuffers_fbo->color_textures[0], 2);
-	if (gamma)
-		reflections_shader->setUniform("u_gamma", 1);
+
+	if(scene_reflection)
+		quad->render(GL_TRIANGLES);
 	else
-		reflections_shader->setUniform("u_gamma", 0);
-	reflections_shader->setUniform("u_screen_texture", illumination_fbo->color_textures[0], 0);
-
-
-	quad->render(GL_TRIANGLES);
+		illumination_fbo->color_textures[0]->toViewport();
 	reflection_fbo->unbind();
 
 	// METER EN UNA FUNCIÓN
@@ -1306,17 +1305,17 @@ void GTR::Renderer::renderDeferred(Camera* camera)
 			}
 			volumetric_fbo->unbind();
 
-			illumination_fbo->bind();
+			reflection_fbo->bind();
 			//reflection_fbo->bind();
 			glEnable(GL_BLEND);
 			glBlendFunc(GL_SRC_ALPHA, GL_ONE);
-			volumetric_fbo->color_textures[0]->toViewport();
+			reflection_fbo->color_textures[0]->toViewport();
 			glDisable(GL_BLEND);
-			illumination_fbo->unbind();
+			reflection_fbo->unbind();
 		}
 	}
 
-	Texture* finalFX = applyFX(camera, illumination_fbo->color_textures[0], gbuffers_fbo->depth_texture);
+	Texture* finalFX = applyFX(camera, reflection_fbo->color_textures[0], gbuffers_fbo->depth_texture);
 
 	glDisable(GL_BLEND);
 	applyColorCorrection(finalFX);
@@ -2522,168 +2521,178 @@ Texture* GTR::Renderer::applyFX(Camera* camera, Texture* color_texture, Texture*
 
 	//vp_matrix_last = camera->viewprojection_matrix;
 
-	//// -- Greyscale --
-	//if (saturation) {
-	//	// start painting in textureA reading from current_texture
-	//	FBO* fbo = Texture::getGlobalFBO(postFX_textureA);
-	//	fbo->bind();
-	//	fxshader = Shader::Get("saturation");
-	//	fxshader->enable();
-	//	fxshader->setUniform("u_saturation", saturation_intensity);
-	//	fxshader->setUniform("u_vigneting", vigneting_intensity);
-	//	current_texture->toViewport(fxshader);
-	//	fbo->unbind();
-	//	// now the current is textureA since it is the one that has the latest fx
-	//	current_texture = postFX_textureA;
-	//	// INTERCAMBIAMOS LAS TEXTURAS A Y B. AHORA LA A TIENE LA INFO DE LA B
-	//	std::swap(postFX_textureA, postFX_textureB);
-	//}
+	// -- Greyscale --
+	if (saturation) {
+		// start painting in textureA reading from current_texture
+		FBO* fbo = Texture::getGlobalFBO(postFX_textureA);
+		fbo->bind();
+		fxshader = Shader::Get("saturation");
+		fxshader->enable();
+		fxshader->setUniform("u_saturation", saturation_intensity);
+		fxshader->setUniform("u_vigneting", vigneting_intensity);
+		current_texture->toViewport(fxshader);
+		fbo->unbind();
+		// now the current is textureA since it is the one that has the latest fx
+		current_texture = postFX_textureA;
+		// INTERCAMBIAMOS LAS TEXTURAS A Y B. AHORA LA A TIENE LA INFO DE LA B
+		std::swap(postFX_textureA, postFX_textureB);
+	}
 
 
-	//// -- Lens distortion --
-	//if (lens_distortion) {
-	//	fbo = Texture::getGlobalFBO(postFX_textureA);
-	//	fbo->bind();
-	//	fxshader = Shader::Get("lens_distortion");
-	//	current_texture->toViewport(fxshader);
-	//	fbo->unbind();
+	// -- Lens distortion --
+	if (lens_distortion) {
+		fbo = Texture::getGlobalFBO(postFX_textureA);
+		fbo->bind();
+		fxshader = Shader::Get("lens_distortion");
+		current_texture->toViewport(fxshader);
+		fbo->unbind();
 
-	//	current_texture = postFX_textureA;
-	//	std::swap(postFX_textureA, postFX_textureB);
-	//}
+		current_texture = postFX_textureA;
+		std::swap(postFX_textureA, postFX_textureB);
+	}
 
-	//// -- Contrast --
-	//if (contrast) {
-	//	fbo = Texture::getGlobalFBO(postFX_textureA);
-	//	fbo->bind();
-	//	fxshader = Shader::Get("contrast");
-	//	fxshader->enable();
-	//	fxshader->setUniform("u_intensity", contrast_intensity);
-	//	current_texture->toViewport(fxshader);
-	//	fbo->unbind();
+	// -- Contrast --
+	if (contrast) {
+		fbo = Texture::getGlobalFBO(postFX_textureA);
+		fbo->bind();
+		fxshader = Shader::Get("contrast");
+		fxshader->enable();
+		fxshader->setUniform("u_intensity", contrast_intensity);
+		current_texture->toViewport(fxshader);
+		fbo->unbind();
 
-	//	current_texture = postFX_textureA;
-	//	std::swap(postFX_textureA, postFX_textureB);
-	//}
+		current_texture = postFX_textureA;
+		std::swap(postFX_textureA, postFX_textureB);
+	}
 
-	//// ANTES DE HACER EL BLUR, VAMOS A GUARDAR LA TEXTURA EN C YA QUE EL BLUR MODIFICARÁ TANTO A COMO B
-	//if (simple_glow) {
-	//	fbo = Texture::getGlobalFBO(postFX_textureC);
-	//	fbo->bind();
-	//	fxshader = Shader::Get("contrast");
-	//	fxshader->enable();
-	//	fxshader->setUniform("u_intensity", 1.0f);
-	//	current_texture->toViewport(fxshader);
-	//	fbo->unbind();
-	//	current_texture = postFX_textureC;
+	// ANTES DE HACER EL BLUR, VAMOS A GUARDAR LA TEXTURA EN C YA QUE EL BLUR MODIFICARÁ TANTO A COMO B
+	if (simple_glow) {
+		fbo = Texture::getGlobalFBO(postFX_textureC);
+		fbo->bind();
+		fxshader = Shader::Get("contrast");
+		fxshader->enable();
+		fxshader->setUniform("u_intensity", 1.0f);
+		current_texture->toViewport(fxshader);
+		fbo->unbind();
+		current_texture = postFX_textureC;
 
-	//	// LA B AQUÍ SIGUE TENIENDO LO MISMO QUE C, NO PODEMOS APLICARLE A ELLA EL THRESHOLD??
-	//	fbo = Texture::getGlobalFBO(postFX_textureD);
-	//	fbo->bind();
-	//	fxshader = Shader::Get("threshold");
-	//	fxshader->enable();
-	//	fxshader->setUniform("u_threshold", simglow_threshold);
-	//	current_texture->toViewport(fxshader);
-	//	fbo->unbind();
-	//	current_texture = postFX_textureD;
+		// LA B AQUÍ SIGUE TENIENDO LO MISMO QUE C, NO PODEMOS APLICARLE A ELLA EL THRESHOLD??
+		fbo = Texture::getGlobalFBO(postFX_textureD);
+		fbo->bind();
+		fxshader = Shader::Get("threshold");
+		fxshader->enable();
+		fxshader->setUniform("u_threshold", simglow_threshold);
+		current_texture->toViewport(fxshader);
+		fbo->unbind();
+		current_texture = postFX_textureD;
 
-	//for (int i = 0; i < 4; i++) {
-		//fbo = Texture::getGlobalFBO(postFX_textureA);
-		//fbo->bind();
-		//fxshader = Shader::Get("blur");
-		//fxshader->enable();
+		for (int i = 0; i < 4; i++) {
+			fbo = Texture::getGlobalFBO(postFX_textureA);
+			fbo->bind();
+			fxshader = Shader::Get("blur");
+			fxshader->enable();
+			fxshader->setUniform("u_intensity", 1.0f);
+			// EL OFFSET SON LOS PIXELES QUE NOS QUEREMOS MOVER PARA APLICAR EL BLUR -- TIENE QUE SER EL IRES, ES DECIR LA INVERSA DE LO QUE MIDA LA TEXTURA
+			// DE MOMENTO PONEMOS SOLO EN X PARA MOVERNOS SOLO HORIZONTALMENTE
+			fxshader->setUniform("u_offset", vec2(pow(1.0, i)/current_texture->width, 0.0) * simglow_blur_factor);
+			current_texture->toViewport(fxshader);
+			fbo->unbind();
+
+			// SIN HACER SWAP AHORA ESCRIBIMOS EN LA TEXTURA B PARA APLICAR EL BLUR VERTICAL
+			fbo = Texture::getGlobalFBO(postFX_textureB);
+			fbo->bind();
+			fxshader = Shader::Get("blur");
+			fxshader->enable();
+			fxshader->setUniform("u_intensity", 1.0f);
+			// EL OFFSET SON LOS PIXELES QUE NOS QUEREMOS MOVER PARA APLICAR EL BLUR -- TIENE QUE SER EL IRES, ES DECIR LA INVERSA DE LO QUE MIDA LA TEXTURA
+			// DE MOMENTO PONEMOS SOLO EN X PARA MOVERNOS SOLO HORIZONTALMENTE
+			fxshader->setUniform("u_offset", vec2(0.0, pow(1.0, i) / current_texture->height) * simglow_blur_factor);
+			// read from texture A
+			postFX_textureA->toViewport(fxshader);
+			fbo->unbind();
+
+			current_texture = postFX_textureB;
+		}
+		std::swap(postFX_textureA, postFX_textureB);
+
+		// Mix blur & normal
+		fbo = Texture::getGlobalFBO(postFX_textureA);
+		fbo->bind();
+		fxshader = Shader::Get("mix");
+		fxshader->enable();
+		// HARCODEADO
+		fxshader->setUniform("u_intensity", simglow_mix_factor);
+		fxshader->setUniform("u_textureB", postFX_textureC, 1);
+		current_texture->toViewport(fxshader);
+		fbo->unbind();
+		current_texture = postFX_textureA;
+		std::swap(postFX_textureA, postFX_textureB);
+	}
+
+	if (depth_field) {
+		//Depth of field
+		fbo = Texture::getGlobalFBO(postFX_textureA);
+		fbo->bind();
+		fxshader = Shader::Get("depth_field");
+		fxshader->enable();
+		fxshader->setUniform("u_depth_texture", depth_texture, 1);
+		Matrix44 inv_vp = camera->viewprojection_matrix;
+		inv_vp.inverse();
+		fxshader->setUniform("u_inverse_viewprojection", inv_vp);
+		fxshader->setUniform("u_camera_position", camera->eye);
+		fxshader->setUniform("u_focal_length", focal_length);
+		fxshader->setUniform("u_focal_range", focal_range);
+		//fxshader->setUniform("u_apperture", apperture);
+		//fxshader->setUniform("u_plane_focus", plane_focus);
+		// HARCODEADO
+		fxshader->setUniform("u_standard_deviation", 1.0f);
+		float gaussian_comp = 1.0f / sqrt(2 * PI * 1.0f * 1.0f);
+		fxshader->setUniform("u_gaussian_comp", gaussian_comp);
+
+
+		fxshader->setUniform("u_iRes", Vector2(1 / (float)Application::instance->window_width, 1 / (float)Application::instance->window_height));
+		fxshader->setUniform("u_intensity", simglow_blur_factor);
 		//fxshader->setUniform("u_intensity", 1.0f);
-		//// EL OFFSET SON LOS PIXELES QUE NOS QUEREMOS MOVER PARA APLICAR EL BLUR -- TIENE QUE SER EL IRES, ES DECIR LA INVERSA DE LO QUE MIDA LA TEXTURA
-		//// DE MOMENTO PONEMOS SOLO EN X PARA MOVERNOS SOLO HORIZONTALMENTE
-		//fxshader->setUniform("u_offset", vec2(pow(1.0, i)/current_texture->width, 0.0) * simglow_blur_factor);
-		//current_texture->toViewport(fxshader);
-		//fbo->unbind();
+		fxshader->setUniform("u_offset", vec2(1 / Application::instance->window_width, 0.0));
+		current_texture->toViewport(fxshader);
+		fbo->unbind();
 
-		//// SIN HACER SWAP AHORA ESCRIBIMOS EN LA TEXTURA B PARA APLICAR EL BLUR VERTICAL
-		//fbo = Texture::getGlobalFBO(postFX_textureB);
-		//fbo->bind();
-		//fxshader = Shader::Get("blur");
-		//fxshader->enable();
+		//current_texture = postFX_textureA;
+		//std::swap(postFX_textureA, postFX_textureB);
+
+
+		// SIN HACER SWAP AHORA ESCRIBIMOS EN LA TEXTURA B PARA APLICAR EL BLUR VERTICAL
+		fbo = Texture::getGlobalFBO(postFX_textureB);
+		fbo->bind();
+		fxshader = Shader::Get("depth_field");
+		fxshader->enable();
+		//fxshader->setUniform("u_intensity", simglow_blur_factor);
 		//fxshader->setUniform("u_intensity", 1.0f);
-		//// EL OFFSET SON LOS PIXELES QUE NOS QUEREMOS MOVER PARA APLICAR EL BLUR -- TIENE QUE SER EL IRES, ES DECIR LA INVERSA DE LO QUE MIDA LA TEXTURA
-		//// DE MOMENTO PONEMOS SOLO EN X PARA MOVERNOS SOLO HORIZONTALMENTE
+		fxshader->setUniform("u_depth_texture", depth_texture, 1);
+		//Matrix44 inv_vp = camera->viewprojection_matrix;
+		//inv_vp.inverse();
+		fxshader->setUniform("u_inverse_viewprojection", inv_vp);
+		fxshader->setUniform("u_camera_position", camera->eye);
+		fxshader->setUniform("u_focal_length", focal_length);
+		fxshader->setUniform("u_focal_range", focal_range);
+		//fxshader->setUniform("u_apperture", apperture);
+		//fxshader->setUniform("u_plane_focus", plane_focus);
+		// HARCODEADO
+		fxshader->setUniform("u_standard_deviation", 1.0f);
+		//float gaussian_comp = 1.0f / sqrt(2 * PI * 1.0f * 1.0f);
+		fxshader->setUniform("u_gaussian_comp", gaussian_comp);
+
+		fxshader->setUniform("u_iRes", Vector2(1 / (float)Application::instance->window_width, 1 / (float)Application::instance->window_height));
+		fxshader->setUniform("u_intensity", simglow_blur_factor);
+		fxshader->setUniform("u_offset", vec2(0.0, 1 / Application::instance->window_height));
 		//fxshader->setUniform("u_offset", vec2(0.0, pow(1.0, i) / current_texture->height) * simglow_blur_factor);
-		//// read from texture A
-		//postFX_textureA->toViewport(fxshader);
-		//fbo->unbind();
+		// read from texture A
+		postFX_textureA->toViewport(fxshader);
+		fbo->unbind();
 
-		//current_texture = postFX_textureB;
-	//	}
-	//	std::swap(postFX_textureA, postFX_textureB);
-
-	//	// Mix blur & normal
-	//	fbo = Texture::getGlobalFBO(postFX_textureA);
-	//	fbo->bind();
-	//	fxshader = Shader::Get("mix");
-	//	fxshader->enable();
-	//	// HARCODEADO
-	//	fxshader->setUniform("u_intensity", simglow_mix_factor);
-	//	fxshader->setUniform("u_textureB", postFX_textureC, 1);
-	//	current_texture->toViewport(fxshader);
-	//	fbo->unbind();
-	//	current_texture = postFX_textureA;
-	//	std::swap(postFX_textureA, postFX_textureB);
-	//}
-
-	// Depth of field
-	fbo = Texture::getGlobalFBO(postFX_textureA);
-	fbo->bind();
-	fxshader = Shader::Get("depth_field");
-	fxshader->enable();
-	fxshader->setUniform("u_depth_texture", depth_texture, 1);
-	Matrix44 inv_vp = camera->viewprojection_matrix;
-	inv_vp.inverse();
-	fxshader->setUniform("u_inverse_viewprojection", inv_vp);
-	fxshader->setUniform("u_camera_position", camera->eye);
-	fxshader->setUniform("u_focal_length", focal_length);
-	fxshader->setUniform("u_focal_range", focal_range);
-	//fxshader->setUniform("u_apperture", apperture);
-	//fxshader->setUniform("u_plane_focus", plane_focus);
-	// HARCODEADO
-	fxshader->setUniform("u_standard_deviation", 1.0f);
-	float gaussian_comp = 1.0f / sqrt(2 * PI * 1.0f * 1.0f);
-	fxshader->setUniform("u_gaussian_comp", gaussian_comp);
-
-
-	//fxshader->setUniform("u_intensity", simglow_blur_factor);
-	//fxshader->setUniform("u_intensity", 1.0f);
-	fxshader->setUniform("u_offset", vec2(1 / Application::instance->window_width, 0.0));
-	current_texture->toViewport(fxshader);
-	fbo->unbind();
-
-	// SIN HACER SWAP AHORA ESCRIBIMOS EN LA TEXTURA B PARA APLICAR EL BLUR VERTICAL
-	fbo = Texture::getGlobalFBO(postFX_textureB);
-	fbo->bind();
-	fxshader = Shader::Get("depth_field");
-	fxshader->enable();
-	//fxshader->setUniform("u_intensity", simglow_blur_factor);
-	//fxshader->setUniform("u_intensity", 1.0f);
-	fxshader->setUniform("u_depth_texture", depth_texture, 1);
-	//Matrix44 inv_vp = camera->viewprojection_matrix;
-	inv_vp.inverse();
-	fxshader->setUniform("u_inverse_viewprojection", inv_vp);
-	fxshader->setUniform("u_camera_position", camera->eye);
-	fxshader->setUniform("u_focal_length", focal_length);
-	fxshader->setUniform("u_focal_range", focal_range);
-	//fxshader->setUniform("u_apperture", apperture);
-	//fxshader->setUniform("u_plane_focus", plane_focus);
-	// HARCODEADO
-	fxshader->setUniform("u_standard_deviation", 1.0f);
-	//float gaussian_comp = 1.0f / sqrt(2 * PI * 1.0f * 1.0f);
-	fxshader->setUniform("u_gaussian_comp", gaussian_comp);
-
-	fxshader->setUniform("u_offset", vec2(0.0, 1 / Application::instance->window_height));
-	//fxshader->setUniform("u_offset", vec2(0.0, pow(1.0, i) / current_texture->height) * simglow_blur_factor);
-	// read from texture A
-	postFX_textureA->toViewport(fxshader);
-	fbo->unbind();
-
-	current_texture = postFX_textureB;
+		current_texture = postFX_textureB;
+		std::swap(postFX_textureA, postFX_textureB);
+	}
 	
 
 	return current_texture;

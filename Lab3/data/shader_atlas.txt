@@ -859,8 +859,8 @@ void main()
 	vec3 reflection_color = vec3(0.0);
 	if (u_scene_reflections == 1){
 		// BAJAMOS 4 VALORES SEGUN EL ROUGHNESS PARA QUE ALGUNAS PARTES REFLEJEN MÁS MATE
-		//reflection_color = textureLod(u_skybox_texture, LightComp.R, met_rough.y * 4.0).xyz;
-		reflection_color = texture(u_skybox_texture, LightComp.R).xyz;
+		reflection_color = textureLod(u_skybox_texture, LightComp.R, met_rough.y * 4.0).xyz;
+		//reflection_color = texture(u_skybox_texture, LightComp.R).xyz;
 	}
 
 
@@ -879,8 +879,8 @@ void main()
 		color.xyz = mix(color.xyz, planar_reflection_color, 0.5);
 
 	if (u_scene_reflections == 1){
-		float reflection_factor = 1.0;
-		//float reflection_factor = met_rough.z + u_metallic_factor;
+		//float reflection_factor = 1.0;
+		float reflection_factor = met_rough.z + u_metallic_factor;
 		color.xyz = mix(color.xyz, reflection_color, reflection_factor);
 	}
 
@@ -1330,7 +1330,7 @@ void main()
 	vec3 reflection_color = vec3(0.0);
 	if (u_scene_reflections == 1){
 		reflection_color = textureLod(u_skybox_texture, LightComp.R, roughness * 4.0).xyz;
-	//	reflection_color = texture(u_skybox_texture, LightComp.R).xyz;
+		//reflection_color = texture(u_skybox_texture, LightComp.R).xyz;
 	}
 
 	vec3 light = vec3(u_ambient_light);
@@ -1351,9 +1351,9 @@ void main()
 		color.xyz = mix(color.xyz, planar_reflection_color, 0.5);
 
 	if (u_scene_reflections == 1){
-		//float reflection_factor = met_rough.z + u_metallic_factor;
+		float reflection_factor = metalness + u_metallic_factor;
 		//float reflection_factor = 1.0;
-		color.xyz = mix(color.xyz, reflection_color, metalness);
+		color.xyz = mix(color.xyz, reflection_color, reflection_factor);
 	}
 
 	color *= color_texture;
@@ -2181,25 +2181,19 @@ void main()
 	vec3 R = reflect(V, N);
 
 	vec3 reflection_color = vec3(0.0);
-	if(u_scene_reflections == 1){
-		//reflection_color = textureLod(u_skybox_texture, R, gb0_color.w * 4.0).xyz;
-		reflection_color = texture(u_skybox_texture, R).xyz;
-	}
+	reflection_color = textureLod(u_skybox_texture, R, roughness * 4.0).xyz;
+	//reflection_color = texture(u_skybox_texture, R).xyz;
 
 	if (u_gamma == 1){
 		reflection_color = degamma(reflection_color);
 	}
 
-	float reflection_factor = 0.0;
-	if(u_scene_reflections == 1){
-		reflection_factor = 1.0;
-		//float reflection_factor = met_rough.z + u_metallic_factor;
-	}
-
+	//reflection_factor = 1.0;
+	float reflection_factor = metalness;
 	color.xyz = mix(color.xyz, reflection_color, reflection_factor);
 
 	FragColor = color;
-	//FragColor = texture(u_gb0_texture, uv); 
+	//FragColor = texture(u_screen_texture, uv);
 	//FragColor = vec4(N, 1.0); 
 	//FragColor = vec4(0.0, 1.0, 0.0, 1.0); 
 
@@ -2718,7 +2712,8 @@ precision highp float;
 uniform sampler2D u_texture;
 uniform sampler2D u_depth_texture;
 uniform mat4 u_inverse_viewprojection;
-uniform float u_camera_position;
+uniform vec3 u_camera_position;
+uniform vec2 u_iRes;
 
 uniform float u_focal_length;
 uniform float u_focal_range;
@@ -2727,14 +2722,15 @@ uniform float u_focal_range;
 uniform float u_standard_deviation;
 uniform float u_gaussian_comp;
 
-uniform float u_offset;
+uniform vec2 u_offset;
+uniform float u_intensity;
+out vec4 FragColor;
+
 
 const float E = 2.71828182845;
 
-out vec4 FragColor;
-
 void main() {
-	vec2 uv = v_uv;
+	vec2 uv = gl_FragCoord.xy * u_iRes.xy;
 
 	vec4 color = texture(u_texture, uv);
    	float depth = texture( u_depth_texture, uv ).x;
@@ -2742,46 +2738,34 @@ void main() {
 	vec4 proj_worldpos = u_inverse_viewprojection * screen_pos;
 	vec3 world_position = proj_worldpos.xyz / proj_worldpos.w;
 
+	float camera_dist = length(world_position - u_camera_position);
 	//float CoC_num = u_apperture * (u_focal_length * (u_plane_focus - depth));
 	//float CoC_den = depth * (u_plane_focus - u_focal_length);
 	//float CoC = abs(CoC_num / CoC_den);
 	float CoC = (depth - u_focal_length) / u_focal_range;
 
-	CoC = clamp(CoC, 0.0, 20.0);
-
+	CoC = clamp(CoC, 0.0, 20);
+	CoC /= 20;
 	//vec3 camera_dist = world_position - u_camera_position;
 
 	//vec3 offset_vec = camera_dist - u_focal_length;
 	//float offset = length(offset_vec);
 
-	//vec4 sum = vec4(0.0);
-	//for (int i = 0; i < CoC; i++){
-	//	float offset = (i/(CoC-1) - 0.5) * 1.0;
-	//	float deviation_squared = u_standard_deviation*u_standard_deviation;
-	//	float gauss = u_gaussian_comp * pow(E, -((offset*offset)/(2*deviation_squared)));
-	//	float sample_dist = i - floor(CoC/2);
-	//	//sum += texture2D(u_texture, uv + offset * sample_dist) * gauss;
-	//	sum += texture2D(u_texture, uv + offset * sample_dist);
-	//}
-	
-	//linear blur shader of 9 samples
-   vec4 sum = vec4(0.0);
-   sum += texture2D(u_texture, v_uv + u_offset * -4.0) * 0.05/0.98;
-   sum += texture2D(u_texture, v_uv + u_offset * -3.0) * 0.09/0.98;
-   sum += texture2D(u_texture, v_uv + u_offset * -2.0) * 0.12/0.98;
-   sum += texture2D(u_texture, v_uv + u_offset * -1.0) * 0.15/0.98;
-   sum += texture2D(u_texture, v_uv) * 0.16/0.98;
-   sum += texture2D(u_texture, v_uv + u_offset * 4.0) * 0.05/0.98;
-   sum += texture2D(u_texture, v_uv + u_offset * 3.0) * 0.09/0.98;
-   sum += texture2D(u_texture, v_uv + u_offset * 2.0) * 0.12/0.98;
-   sum += texture2D(u_texture, v_uv + u_offset * 1.0) * 0.15/0.98;
-   
-   FragColor = u_intensity * sum;
+	vec4 sum = vec4(0.0);
+	for (int i = 0; i < CoC; i++){
+		float offset = (i/(CoC-1) - 0.5) * 1.0;
+		float deviation_squared = u_standard_deviation*u_standard_deviation;
+		float gauss = u_gaussian_comp * pow(E, -((offset*offset)/(2*deviation_squared)));
+		float sample_dist = i - floor(CoC/2);
+		//sum += texture2D(u_texture, uv + offset * sample_dist) * gauss;
+		//sum += texture2D(u_texture, uv + u_offset * sample_dist) * gauss;
+	}
 
-	//vec4 final_blur = sum;
+	vec4 final_blur = sum;
 
 
-//   	FragColor = final_blur;
+  	FragColor = color;
+  	//FragColor = vec4( world_position.z);
 }
 
 //--------------------------------- Skybox -------------------------------
