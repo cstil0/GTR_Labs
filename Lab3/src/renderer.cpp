@@ -57,7 +57,7 @@ GTR::Renderer::Renderer()
 	show_probes = false;
 	shadow_flag = true;
 
-	pipeline = DEFERRED;
+	pipeline = FORWARD;
 	typeOfRender = eRenderPipeline::MULTIPASS;
 
 	// Color correction
@@ -113,10 +113,11 @@ GTR::Renderer::Renderer()
 	simglow_blur_factor = 1.0;
 	simglow_mix_factor = 1.0;
 	simglow_threshold = 0.9;
-	apperture = 1.0;
+	//apperture = 1.0;
 	focal_length = 1.0;
-	plane_focus = 1.0;
-	image_distance = 1.0;
+	focal_range = 1.0;
+	//plane_focus = 1.0;
+	//image_distance = 1.0;
 
 	// decals
 }
@@ -1177,69 +1178,69 @@ void GTR::Renderer::renderDeferred(Camera* camera)
 	glDisable(GL_DEPTH_TEST);
 	illumination_fbo->unbind();
 
-	//Shader* reflections_shader = Shader::Get("reflections_deferred");
-	//reflections_shader->enable();
-	//reflection_fbo->bind();
-	//if (scene_reflection && reflection_fbo) {
-	//	// POR DEFECTO, LA TEXTURA DE REFLECTION SERÁ LA DEL SKYBOX
-	//	Texture* reflection = scene->skybox;
-	//	if (reflection_probes.size() && !is_rendering_reflections)
-	//	{
-	//		int nearest_index = -1;
-	//		float nearest_distance = 1000000.0;
-	//		// search which probe is the nearest one
-	//		for (int i = 0; i < reflection_probes.size(); i++) {
-	//			Vector3 camera_position= camera->eye;
-	//			Vector3 probe_position = reflection_probes[i]->pos;
-	//			Vector3 distance = camera_position - probe_position;
-	//			float mod_distance = pow(distance.x, 2.0) + pow(distance.y, 2.0) + pow(distance.z, 2.0);
-	//			if (mod_distance < nearest_distance) {
-	//				nearest_distance = mod_distance;
-	//				nearest_index = i;
-	//			}
-	//		}
-	//		reflection = reflection_probes[nearest_index]->cubemap;
-	//		//reflection = reflection_probes[0]->cubemap;
-	//		glClearColor(scene->background_color.x, scene->background_color.y, scene->background_color.z, 1.0);
-	//		glClear(GL_COLOR_BUFFER_BIT);
+	Shader* reflections_shader = Shader::Get("reflections_deferred");
+	reflections_shader->enable();
+	reflection_fbo->bind();
+	if (scene_reflection && reflection_fbo) {
+		// POR DEFECTO, LA TEXTURA DE REFLECTION SERÁ LA DEL SKYBOX
+		Texture* reflection = scene->skybox;
+		if (reflection_probes.size() && !is_rendering_reflections)
+		{
+			int nearest_index = -1;
+			float nearest_distance = 1000000.0;
+			// search which probe is the nearest one
+			for (int i = 0; i < reflection_probes.size(); i++) {
+				Vector3 camera_position= camera->eye;
+				Vector3 probe_position = reflection_probes[i]->pos;
+				Vector3 distance = camera_position - probe_position;
+				float mod_distance = pow(distance.x, 2.0) + pow(distance.y, 2.0) + pow(distance.z, 2.0);
+				if (mod_distance < nearest_distance) {
+					nearest_distance = mod_distance;
+					nearest_index = i;
+				}
+			}
+			reflection = reflection_probes[nearest_index]->cubemap;
+			//reflection = reflection_probes[0]->cubemap;
+			glClearColor(scene->background_color.x, scene->background_color.y, scene->background_color.z, 1.0);
+			glClear(GL_COLOR_BUFFER_BIT);
 
-	//		reflections_shader->setUniform("u_depth_texture",gbuffers_fbo->depth_texture, 1);
-	//		reflections_shader->setUniform("u_gb0_texture",gbuffers_fbo->color_textures[0], 2);
-	//		reflections_shader->setUniform("u_gb1_texture", gbuffers_fbo->color_textures[1], 3);
-	//		reflections_shader->setUniform("u_skybox_texture", reflection, 4);
+			reflections_shader->setUniform("u_depth_texture",gbuffers_fbo->depth_texture, 1);
+			reflections_shader->setUniform("u_gb0_texture",gbuffers_fbo->color_textures[0], 2);
+			reflections_shader->setUniform("u_gb1_texture", gbuffers_fbo->color_textures[1], 3);
+			reflections_shader->setUniform("u_skybox_texture", reflection, 4);
 
-	//		reflections_shader->setUniform("u_camera_position",camera->eye);
-	//		reflections_shader->setUniform("u_viewprojection",camera->viewprojection_matrix);
-	//		reflections_shader->setUniform("u_inverse_viewprojection",inv_vp);
-	//		reflections_shader->setUniform("u_iRes", Vector2(1.0 / (float)width, 1.0 / (float)height));
+			reflections_shader->setUniform("u_camera_position",camera->eye);
+			reflections_shader->setUniform("u_viewprojection",camera->viewprojection_matrix);
+			reflections_shader->setUniform("u_inverse_viewprojection",inv_vp);
+			reflections_shader->setUniform("u_iRes", Vector2(1.0 / (float)width, 1.0 / (float)height));
 
-	//		//illumination_fbo->bind();
-	//		//glClearColor(scene->background_color.x, scene->background_color.y, scene->background_color.z, 1.0);
-	//		//glClear(GL_COLOR_BUFFER_BIT);
+			//illumination_fbo->bind();
+			//glClearColor(scene->background_color.x, scene->background_color.y, scene->background_color.z, 1.0);
+			//glClear(GL_COLOR_BUFFER_BIT);
 
-	//		//glDisable(GL_BLEND);
-	//		//reflection_probe_fbo->color_textures[0]->toViewport();
-	//		//glEnable(GL_BLEND);
-	//		//illumination_fbo->unbind();
-	//	}
-	//	reflections_shader->setUniform("u_scene_reflections", 1);
-	//}
-	//else {
-	//	//reflections_shader->setUniform("u_screen_texture", illumination_fbo->color_textures[0], 0);
-	//	reflections_shader->setUniform("u_scene_reflections", 0);
-	//	reflections_shader->setUniform("u_skybox_texture", Texture::getBlackTexture(), 4);
-	//}
+			//glDisable(GL_BLEND);
+			//reflection_probe_fbo->color_textures[0]->toViewport();
+			//glEnable(GL_BLEND);
+			//illumination_fbo->unbind();
+		}
+		reflections_shader->setUniform("u_scene_reflections", 1);
+	}
+	else {
+		//reflections_shader->setUniform("u_screen_texture", illumination_fbo->color_textures[0], 0);
+		reflections_shader->setUniform("u_scene_reflections", 0);
+		reflections_shader->setUniform("u_skybox_texture", Texture::getBlackTexture(), 4);
+	}
 
-	//reflections_shader->setUniform("u_gb0_texture", gbuffers_fbo->color_textures[0], 2);
-	//if (gamma)
-	//	reflections_shader->setUniform("u_gamma", 1);
-	//else
-	//	reflections_shader->setUniform("u_gamma", 0);
-	//reflections_shader->setUniform("u_screen_texture", illumination_fbo->color_textures[0], 0);
+	reflections_shader->setUniform("u_gb0_texture", gbuffers_fbo->color_textures[0], 2);
+	if (gamma)
+		reflections_shader->setUniform("u_gamma", 1);
+	else
+		reflections_shader->setUniform("u_gamma", 0);
+	reflections_shader->setUniform("u_screen_texture", illumination_fbo->color_textures[0], 0);
 
 
-	//quad->render(GL_TRIANGLES);
-	//reflection_fbo->unbind();
+	quad->render(GL_TRIANGLES);
+	reflection_fbo->unbind();
 
 	// METER EN UNA FUNCIÓN
 	for (int i = 0; i < lights.size(); i++){
@@ -2634,6 +2635,21 @@ Texture* GTR::Renderer::applyFX(Camera* camera, Texture* color_texture, Texture*
 	fbo->bind();
 	fxshader = Shader::Get("depth_field");
 	fxshader->enable();
+	fxshader->setUniform("u_depth_texture", depth_texture, 1);
+	Matrix44 inv_vp = camera->viewprojection_matrix;
+	inv_vp.inverse();
+	fxshader->setUniform("u_inverse_viewprojection", inv_vp);
+	fxshader->setUniform("u_camera_position", camera->eye);
+	fxshader->setUniform("u_focal_length", focal_length);
+	fxshader->setUniform("u_focal_range", focal_range);
+	//fxshader->setUniform("u_apperture", apperture);
+	//fxshader->setUniform("u_plane_focus", plane_focus);
+	// HARCODEADO
+	fxshader->setUniform("u_standard_deviation", 1.0f);
+	float gaussian_comp = 1.0f / sqrt(2 * PI * 1.0f * 1.0f);
+	fxshader->setUniform("u_gaussian_comp", gaussian_comp);
+
+
 	//fxshader->setUniform("u_intensity", simglow_blur_factor);
 	//fxshader->setUniform("u_intensity", 1.0f);
 	fxshader->setUniform("u_offset", vec2(1 / Application::instance->window_width, 0.0));
@@ -2643,14 +2659,24 @@ Texture* GTR::Renderer::applyFX(Camera* camera, Texture* color_texture, Texture*
 	// SIN HACER SWAP AHORA ESCRIBIMOS EN LA TEXTURA B PARA APLICAR EL BLUR VERTICAL
 	fbo = Texture::getGlobalFBO(postFX_textureB);
 	fbo->bind();
-	fxshader = Shader::Get("blur");
+	fxshader = Shader::Get("depth_field");
 	fxshader->enable();
-	fxshader->setUniform("u_intensity", simglow_blur_factor);
+	//fxshader->setUniform("u_intensity", simglow_blur_factor);
 	//fxshader->setUniform("u_intensity", 1.0f);
+	fxshader->setUniform("u_depth_texture", depth_texture, 1);
+	//Matrix44 inv_vp = camera->viewprojection_matrix;
+	inv_vp.inverse();
+	fxshader->setUniform("u_inverse_viewprojection", inv_vp);
+	fxshader->setUniform("u_camera_position", camera->eye);
+	fxshader->setUniform("u_focal_length", focal_length);
+	fxshader->setUniform("u_focal_range", focal_range);
+	//fxshader->setUniform("u_apperture", apperture);
+	//fxshader->setUniform("u_plane_focus", plane_focus);
 	// HARCODEADO
 	fxshader->setUniform("u_standard_deviation", 1.0f);
-	float gaussian_comp = 1.0f / sqrt(2 * PI * 1.0f * 1.0f);
+	//float gaussian_comp = 1.0f / sqrt(2 * PI * 1.0f * 1.0f);
 	fxshader->setUniform("u_gaussian_comp", gaussian_comp);
+
 	fxshader->setUniform("u_offset", vec2(0.0, 1 / Application::instance->window_height));
 	//fxshader->setUniform("u_offset", vec2(0.0, pow(1.0, i) / current_texture->height) * simglow_blur_factor);
 	// read from texture A

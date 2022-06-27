@@ -337,10 +337,11 @@ void Application::renderDebugGUI(void)
 			ImGui::SliderFloat("Blur Factor Simple Glow ", &renderer->simglow_blur_factor, 0.0, 3.0);
 			ImGui::SliderFloat("Mix Factor Simple Glow", &renderer->simglow_mix_factor, 0.0, 3.0);
 			ImGui::SliderFloat("Threshold Simple Glow", &renderer->simglow_threshold, 0.0, 3.0);
-			ImGui::SliderFloat("Threshold Simple Glow", &renderer->apperture, 0.0, 3.0);
-			ImGui::SliderFloat("Threshold Simple Glow", &renderer->focal_length, 0.0, 3.0);
-			ImGui::SliderFloat("Threshold Simple Glow", &renderer->plane_focus, 0.0, 3.0);
-			ImGui::SliderFloat("Threshold Simple Glow", &renderer->image_distance, 0.0, 3.0);
+			//ImGui::SliderFloat("Apperture Depth Field", &renderer->apperture, 0.0, 3.0);
+			ImGui::SliderFloat("Focal Length Depth Field", &renderer->focal_length, 0.0, 3.0);
+			ImGui::SliderFloat("Focal Range Depth Field", &renderer->focal_range, 0.0, 3.0);
+			//ImGui::SliderFloat("Plane Focus Depth Field", &renderer->plane_focus, 0.0, 3.0);
+			//ImGui::SliderFloat("Image Distance Depth Field", &renderer->image_distance, 0.0, 3.0);
 			ImGui::TreePop();
 		}
 		ImGui::TreePop();

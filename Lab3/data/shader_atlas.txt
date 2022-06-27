@@ -2717,15 +2717,19 @@ in vec2 v_uv;
 precision highp float;
 uniform sampler2D u_texture;
 uniform sampler2D u_depth_texture;
-uniform mat4 u_viewprojection_last;
 uniform mat4 u_inverse_viewprojection;
 uniform float u_camera_position;
 
 uniform float u_focal_length;
-uniform float u_apperture;
-uniform float u_plane_focus;
+uniform float u_focal_range;
+//uniform float u_apperture;
+//uniform float u_plane_focus;
 uniform float u_standard_deviation;
 uniform float u_gaussian_comp;
+
+uniform float u_offset;
+
+const float E = 2.71828182845;
 
 out vec4 FragColor;
 
@@ -2738,9 +2742,10 @@ void main() {
 	vec4 proj_worldpos = u_inverse_viewprojection * screen_pos;
 	vec3 world_position = proj_worldpos.xyz / proj_worldpos.w;
 
-	float CoC_num = u_apperture * (u_focal_length * (u_plane_focus - depth));
-	float CoC_den = depth * (u_plane_focus - u_focal_length);
-	float CoC = abs(CoC_num / CoC_den);
+	//float CoC_num = u_apperture * (u_focal_length * (u_plane_focus - depth));
+	//float CoC_den = depth * (u_plane_focus - u_focal_length);
+	//float CoC = abs(CoC_num / CoC_den);
+	float CoC = (depth - u_focal_length) / u_focal_range;
 
 	CoC = clamp(CoC, 0.0, 20.0);
 
@@ -2749,20 +2754,34 @@ void main() {
 	//vec3 offset_vec = camera_dist - u_focal_length;
 	//float offset = length(offset_vec);
 
-	vec4 sum = vec4(0.0);
-	for (int i = 0; i < CoC; i++){
-		float offset = (i/(CoC-1) - 0.5) * 1.0;
-		float deviation_squared = u_standard_deviation*u_standard_deviation;
-		float E = 1.0;
-		float gauss = u_gaussian_comp * pow(E, -((offset*offset)/(2*deviation_squared)));
-		float sample_dist = i - floor(CoC/2);
-		sum += texture2D(u_texture, uv + offset * sample_dist) * gauss;
-	}
+	//vec4 sum = vec4(0.0);
+	//for (int i = 0; i < CoC; i++){
+	//	float offset = (i/(CoC-1) - 0.5) * 1.0;
+	//	float deviation_squared = u_standard_deviation*u_standard_deviation;
+	//	float gauss = u_gaussian_comp * pow(E, -((offset*offset)/(2*deviation_squared)));
+	//	float sample_dist = i - floor(CoC/2);
+	//	//sum += texture2D(u_texture, uv + offset * sample_dist) * gauss;
+	//	sum += texture2D(u_texture, uv + offset * sample_dist);
+	//}
 	
-	vec4 final_blur = sum;
+	//linear blur shader of 9 samples
+   vec4 sum = vec4(0.0);
+   sum += texture2D(u_texture, v_uv + u_offset * -4.0) * 0.05/0.98;
+   sum += texture2D(u_texture, v_uv + u_offset * -3.0) * 0.09/0.98;
+   sum += texture2D(u_texture, v_uv + u_offset * -2.0) * 0.12/0.98;
+   sum += texture2D(u_texture, v_uv + u_offset * -1.0) * 0.15/0.98;
+   sum += texture2D(u_texture, v_uv) * 0.16/0.98;
+   sum += texture2D(u_texture, v_uv + u_offset * 4.0) * 0.05/0.98;
+   sum += texture2D(u_texture, v_uv + u_offset * 3.0) * 0.09/0.98;
+   sum += texture2D(u_texture, v_uv + u_offset * 2.0) * 0.12/0.98;
+   sum += texture2D(u_texture, v_uv + u_offset * 1.0) * 0.15/0.98;
+   
+   FragColor = u_intensity * sum;
+
+	//vec4 final_blur = sum;
 
 
-   	FragColor = color;
+//   	FragColor = final_blur;
 }
 
 //--------------------------------- Skybox -------------------------------

@@ -191,10 +191,11 @@ namespace GTR {
 		float simglow_blur_factor;
 		float simglow_mix_factor;
 		float simglow_threshold;
-		float apperture;
+		//float apperture;
 		float focal_length;
-		float plane_focus;
-		float image_distance;
+		float focal_range;
+		//float plane_focus;
+		//float image_distance;
 
 		Matrix44 vp_matrix_last;
 
