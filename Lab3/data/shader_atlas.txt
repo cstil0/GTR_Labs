@@ -2722,6 +2722,10 @@ uniform mat4 u_inverse_viewprojection;
 uniform float u_camera_position;
 
 uniform float u_focal_length;
+uniform float u_apperture;
+uniform float u_plane_focus;
+uniform float u_standard_deviation;
+uniform float u_gaussian_comp;
 
 out vec4 FragColor;
 
@@ -2734,28 +2738,26 @@ void main() {
 	vec4 proj_worldpos = u_inverse_viewprojection * screen_pos;
 	vec3 world_position = proj_worldpos.xyz / proj_worldpos.w;
 
-//	float CoC_num = u_apperture * (u_focal_length * (u_plane_focus - depth));
-//	float CoC_den = depth * (u_plane_focus - u_focal_length);
-//	float CoC = abs(CoC_num / CoC_den);
+	float CoC_num = u_apperture * (u_focal_length * (u_plane_focus - depth));
+	float CoC_den = depth * (u_plane_focus - u_focal_length);
+	float CoC = abs(CoC_num / CoC_den);
 
-//	CoC = clamp(CoC, 0.0, 3.0);
+	CoC = clamp(CoC, 0.0, 20.0);
 
-	vec3 camera_dist = world_position - u_camera_position;
+	//vec3 camera_dist = world_position - u_camera_position;
 
-	vec3 offset_vec = camera_dist - u_focal_length;
-	float offset = length(offset_vec);
+	//vec3 offset_vec = camera_dist - u_focal_length;
+	//float offset = length(offset_vec);
 
-	//linear blur shader of 9 samples
 	vec4 sum = vec4(0.0);
-	sum += texture2D(u_texture, v_uv + offset * -4.0) * 0.05/0.98;
-	sum += texture2D(u_texture, v_uv + offset * -3.0) * 0.09/0.98;
-	sum += texture2D(u_texture, v_uv + offset * -2.0) * 0.12/0.98;
-	sum += texture2D(u_texture, v_uv + offset * -1.0) * 0.15/0.98;
-	sum += texture2D(u_texture, v_uv) * 0.16/0.98;
-	sum += texture2D(u_texture, v_uv + offset * 4.0) * 0.05/0.98;
-	sum += texture2D(u_texture, v_uv + offset * 3.0) * 0.09/0.98;
-	sum += texture2D(u_texture, v_uv + offset * 2.0) * 0.12/0.98;
-	sum += texture2D(u_texture, v_uv + offset * 1.0) * 0.15/0.98;
+	for (int i = 0; i < CoC; i++){
+		float offset = (i/(CoC-1) - 0.5) * 1.0;
+		float deviation_squared = u_standard_deviation*u_standard_deviation;
+		float E = 1.0;
+		float gauss = u_gaussian_comp * pow(E, -((offset*offset)/(2*deviation_squared)));
+		float sample_dist = i - floor(CoC/2);
+		sum += texture2D(u_texture, uv + offset * sample_dist) * gauss;
+	}
 	
 	vec4 final_blur = sum;
 
