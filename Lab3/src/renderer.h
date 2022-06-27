@@ -183,6 +183,7 @@ namespace GTR {
 		bool lens_distortion;
 		bool contrast;
 		bool simple_glow;
+		bool depth_field;
 
 		float saturation_intensity;
 		float vigneting_intensity;
@@ -190,6 +191,10 @@ namespace GTR {
 		float simglow_blur_factor;
 		float simglow_mix_factor;
 		float simglow_threshold;
+		float apperture;
+		float focal_length;
+		float plane_focus;
+		float image_distance;
 
 		Matrix44 vp_matrix_last;
 
@@ -257,8 +262,8 @@ namespace GTR {
 		
 		void renderIrradianceProbe(Vector3 pos, float size, float* coeffs);
 		void captureIrradianceProbe(sProbe& probe);
-		void saveProbesToDisk();
-		bool loadProbesFromDisk();
+		void saveIrradianceProbesToDisk();
+		bool loadIrradianceProbesFromDisk();
 		void computeIrradianceDeferred(Matrix44 inv_vp);
 		void computeIrradianceForward(Mesh* mesh, Matrix44 model, Material* material, Camera* camera, int i);
 		
@@ -266,6 +271,8 @@ namespace GTR {
 		void generateReflectionProbesMesh();
 		void renderReflectionProbes(Camera* camera);
 		void captureReflectionProbe(Texture* tex, Vector3 pos);
+		void saveReflectionProbesToDisk();
+		bool loadReflectionProbesFromDisk();
 
 		Texture* applyFX(Camera* camera, Texture* color_texture, Texture* depth_texture);
 

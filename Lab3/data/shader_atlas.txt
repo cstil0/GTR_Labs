@@ -15,6 +15,7 @@ probe basic.vs probe.fs
 irradiance_deferred quad.vs irradiance_deferred.fs
 irradiance_forward basic.vs irradiance_forward.fs
 reflection_probe basic.vs reflection_probe.fs
+reflections_deferred quad.vs reflections_deferred.fs
 skybox basic.vs skybox.fs
 volumetric_deferred quad.vs volumetric_deferred.fs
 volumetric_deferred_nondir basic.vs volumetric_deferred_nondir.fs
@@ -26,6 +27,7 @@ blur quad.vs blur.fs
 mix quad.vs mix.fs
 threshold quad.vs threshold.fs
 motionblur quad.vs motionblur.fs
+depth_field quad.vs depth_field.fs
 depth quad.vs depth.fs
 
 // ------------------------------ Uniforms ------------------------------
@@ -2131,6 +2133,79 @@ void main()
 
 }
 
+//-------------------------------- Reflections deferred --------------------------------------
+
+\reflections_deferred.fs
+#version 330 core
+
+in vec2 v_uv;
+
+uniform sampler2D u_depth_texture;
+// MIRAR SI SE PUEDEN IMPORTAR
+uniform sampler2D u_screen_texture;
+uniform sampler2D u_gb0_texture;
+uniform sampler2D u_gb1_texture;
+uniform samplerCube u_skybox_texture;
+uniform int u_scene_reflections;
+
+uniform int u_gamma;
+
+uniform vec3 u_camera_position;
+uniform mat4 u_viewprojection;
+uniform mat4 u_inverse_viewprojection;
+uniform vec2 u_iRes;
+
+//#include light_uniforms
+#include degamma
+
+out vec4 FragColor;
+
+const int SAMPLES = 64;
+
+void main()
+{
+	vec2 uv = gl_FragCoord.xy * u_iRes.xy;
+	vec4 color = texture(u_screen_texture, uv);
+	float depth = texture( u_depth_texture, uv ).x;
+	vec4 gb0_color = texture(u_gb0_texture, uv);
+	vec4 gb1_color = texture(u_gb1_texture, uv);
+	float roughness = gb0_color.w;
+	float metalness = gb1_color.w;
+
+	vec4 screen_pos = vec4(uv.x*2.0-1.0, uv.y*2.0-1.0, depth*2.0-1.0, 1.0);
+	vec4 proj_worldpos = u_inverse_viewprojection * screen_pos;
+	vec3 world_position = proj_worldpos.xyz / proj_worldpos.w;
+
+	vec3 V = normalize(world_position - u_camera_position);
+	vec3 N = normalize(gb1_color.xyz * 2.0 - vec3(1.0));
+	vec3 R = reflect(V, N);
+
+	vec3 reflection_color = vec3(0.0);
+	if(u_scene_reflections == 1){
+		//reflection_color = textureLod(u_skybox_texture, R, gb0_color.w * 4.0).xyz;
+		reflection_color = texture(u_skybox_texture, R).xyz;
+	}
+
+	if (u_gamma == 1){
+		reflection_color = degamma(reflection_color);
+	}
+
+	float reflection_factor = 0.0;
+	if(u_scene_reflections == 1){
+		reflection_factor = 1.0;
+		//float reflection_factor = met_rough.z + u_metallic_factor;
+	}
+
+	color.xyz = mix(color.xyz, reflection_color, reflection_factor);
+
+	//FragColor = color;
+	FragColor = texture(u_gb0_texture, uv); 
+	//FragColor = vec4(N, 1.0); 
+	//FragColor = vec4(0.0, 1.0, 0.0, 1.0); 
+
+}
+
+
 //-------------------------------- Volumetric Deferred --------------------------------------
 
 \volumetric_deferred.fs
@@ -2632,6 +2707,58 @@ void main() {
 	}
 	// average
 	color /= float(SAMPLES);
+   	FragColor = color;
+}
+//--------------------------------- Depth Of Field -------------------------------
+\depth_field.fs
+#version 330 core
+
+in vec2 v_uv;
+precision highp float;
+uniform sampler2D u_texture;
+uniform sampler2D u_depth_texture;
+uniform mat4 u_viewprojection_last;
+uniform mat4 u_inverse_viewprojection;
+//uniform float u_camera_pos;
+uniform float u_offset;
+
+uniform float u_focal_length;
+uniform float u_apperture;
+uniform float u_image_distance;
+uniform float u_plane_focus;
+
+out vec4 FragColor;
+
+void main() {
+	vec2 uv = v_uv;
+
+	vec4 color = texture(u_texture, uv);
+   	float depth = texture( u_depth_texture, uv ).x;
+	vec4 screen_pos = vec4(uv.x*2.0-1.0, uv.y*2.0-1.0, depth*2.0-1.0, 1.0);
+	vec4 proj_worldpos = u_inverse_viewprojection * screen_pos;
+	vec3 world_position = proj_worldpos.xyz / proj_worldpos.w;
+
+	float CoC_num = u_apperture * (u_focal_length * (u_plane_focus - depth));
+	float CoC_den = depth * (u_plane_focus - u_focal_length);
+	float CoC = abs(CoC_num / CoC_den);
+
+	CoC = clamp(CoC, 0.0, 3.0);
+
+	//linear blur shader of 9 samples
+	vec4 sum = vec4(0.0);
+	sum += texture2D(u_texture, v_uv + u_offset * -4.0) * 0.05/0.98;
+	sum += texture2D(u_texture, v_uv + u_offset * -3.0) * 0.09/0.98;
+	sum += texture2D(u_texture, v_uv + u_offset * -2.0) * 0.12/0.98;
+	sum += texture2D(u_texture, v_uv + u_offset * -1.0) * 0.15/0.98;
+	sum += texture2D(u_texture, v_uv) * 0.16/0.98;
+	sum += texture2D(u_texture, v_uv + u_offset * 4.0) * 0.05/0.98;
+	sum += texture2D(u_texture, v_uv + u_offset * 3.0) * 0.09/0.98;
+	sum += texture2D(u_texture, v_uv + u_offset * 2.0) * 0.12/0.98;
+	sum += texture2D(u_texture, v_uv + u_offset * 1.0) * 0.15/0.98;
+	
+	//vec4 final_blur = CoC * sum;
+
+
    	FragColor = color;
 }
 

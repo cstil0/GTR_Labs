@@ -42,6 +42,8 @@ namespace GTR {
 		static Material* Get(const char* name);
 		std::string name;
 		void registerMaterial(const char* name);
+		
+		//bool planar_reflections;
 
 		//parameters to control transparency
 		eAlphaMode alpha_mode;	//could be NO_ALPHA, MASK (alpha cut) or BLEND (alpha blend)

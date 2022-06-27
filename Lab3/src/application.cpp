@@ -306,9 +306,9 @@ void Application::renderDebugGUI(void)
 		if (ImGui::Button("Generate probes"))
 			renderer->generateIrradianceProbes();
 		if (ImGui::Button("Save probes to disk"))
-			renderer->saveProbesToDisk();
+			renderer->saveIrradianceProbesToDisk();
 		if (ImGui::Button("Load probes from disk"))
-			renderer->loadProbesFromDisk();
+			renderer->loadIrradianceProbesFromDisk();
 		ImGui::TreePop();
 	}
 	if (ImGui::TreeNode("Reflections")) {
@@ -329,6 +329,7 @@ void Application::renderDebugGUI(void)
 		ImGui::Checkbox("Lens distortion", &renderer->lens_distortion);
 		ImGui::Checkbox("Contrast", &renderer->contrast);
 		ImGui::Checkbox("Simple Glow", &renderer->simple_glow);
+		ImGui::Checkbox("Depth Of Field", &renderer->depth_field);
 		if (ImGui::TreeNode("PostFX Parameters")) {
 			ImGui::SliderFloat("Saturation Intensity", &renderer->saturation_intensity, 0.0, 3.0);
 			ImGui::SliderFloat("Vigneting Intensity", &renderer->vigneting_intensity, 0.0, 3.0);
@@ -336,6 +337,10 @@ void Application::renderDebugGUI(void)
 			ImGui::SliderFloat("Blur Factor Simple Glow ", &renderer->simglow_blur_factor, 0.0, 3.0);
 			ImGui::SliderFloat("Mix Factor Simple Glow", &renderer->simglow_mix_factor, 0.0, 3.0);
 			ImGui::SliderFloat("Threshold Simple Glow", &renderer->simglow_threshold, 0.0, 3.0);
+			ImGui::SliderFloat("Threshold Simple Glow", &renderer->apperture, 0.0, 3.0);
+			ImGui::SliderFloat("Threshold Simple Glow", &renderer->focal_length, 0.0, 3.0);
+			ImGui::SliderFloat("Threshold Simple Glow", &renderer->plane_focus, 0.0, 3.0);
+			ImGui::SliderFloat("Threshold Simple Glow", &renderer->image_distance, 0.0, 3.0);
 			ImGui::TreePop();
 		}
 		ImGui::TreePop();

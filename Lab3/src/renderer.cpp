@@ -105,6 +105,7 @@ GTR::Renderer::Renderer()
 	lens_distortion = false;
 	contrast = true;
 	simple_glow = true;
+	depth_field = true;
 
 	saturation_intensity = 1.0;
 	vigneting_intensity = 0.0;
@@ -112,6 +113,10 @@ GTR::Renderer::Renderer()
 	simglow_blur_factor = 1.0;
 	simglow_mix_factor = 1.0;
 	simglow_threshold = 0.9;
+	apperture = 1.0;
+	focal_length = 1.0;
+	plane_focus = 1.0;
+	image_distance = 1.0;
 
 	// decals
 }
@@ -650,7 +655,7 @@ void Renderer::renderMeshWithMaterial(Matrix44 model, Mesh* mesh, GTR::Material*
 		// POR DEFECTO, LA TEXTURA DE REFLECTION SERÁ LA DEL SKYBOX
 		Texture* reflection = scene->skybox;
 		if (reflection_probes.size() && !is_rendering_reflections)
-		{	
+		{
 			int nearest_index = -1;
 			float nearest_distance = 1000000.0;
 			// search which probe is the nearest one
@@ -1042,6 +1047,16 @@ void GTR::Renderer::renderDeferred(Camera* camera)
 			GL_FLOAT,
 			true);
 	}
+	if (!reflection_fbo) {
+		reflection_fbo = new FBO();
+		// fbo to compute the illumination for each pixel
+		reflection_fbo->create(width, height,
+			1,
+			GL_RGBA,
+			GL_FLOAT,
+			true);
+	}
+
 	if (!ssao_fbo) {
 		ssao_fbo = new FBO();
 		// ssao fbo. RGB to avoid problems
@@ -1162,6 +1177,70 @@ void GTR::Renderer::renderDeferred(Camera* camera)
 	glDisable(GL_DEPTH_TEST);
 	illumination_fbo->unbind();
 
+	Shader* reflections_shader = Shader::Get("reflections_deferred");
+	reflections_shader->enable();
+	reflection_fbo->bind();
+	if (scene_reflection && reflection_fbo) {
+		// POR DEFECTO, LA TEXTURA DE REFLECTION SERÁ LA DEL SKYBOX
+		Texture* reflection = scene->skybox;
+		if (reflection_probes.size() && !is_rendering_reflections)
+		{
+			int nearest_index = -1;
+			float nearest_distance = 1000000.0;
+			// search which probe is the nearest one
+			for (int i = 0; i < reflection_probes.size(); i++) {
+				Vector3 camera_position= camera->eye;
+				Vector3 probe_position = reflection_probes[i]->pos;
+				Vector3 distance = camera_position - probe_position;
+				float mod_distance = pow(distance.x, 2.0) + pow(distance.y, 2.0) + pow(distance.z, 2.0);
+				if (mod_distance < nearest_distance) {
+					nearest_distance = mod_distance;
+					nearest_index = i;
+				}
+			}
+			reflection = reflection_probes[nearest_index]->cubemap;
+			//reflection = reflection_probes[0]->cubemap;
+			glClearColor(scene->background_color.x, scene->background_color.y, scene->background_color.z, 1.0);
+			glClear(GL_COLOR_BUFFER_BIT);
+
+			reflections_shader->setUniform("u_depth_texture",gbuffers_fbo->depth_texture, 1);
+			reflections_shader->setUniform("u_gb0_texture",gbuffers_fbo->color_textures[0], 2);
+			reflections_shader->setUniform("u_gb1_texture", gbuffers_fbo->color_textures[1], 3);
+			reflections_shader->setUniform("u_skybox_texture", reflection, 4);
+
+			reflections_shader->setUniform("u_camera_position",camera->eye);
+			reflections_shader->setUniform("u_viewprojection",camera->viewprojection_matrix);
+			reflections_shader->setUniform("u_inverse_viewprojection",inv_vp);
+			reflections_shader->setUniform("u_iRes", Vector2(1.0 / (float)width, 1.0 / (float)height));
+
+			//illumination_fbo->bind();
+			//glClearColor(scene->background_color.x, scene->background_color.y, scene->background_color.z, 1.0);
+			//glClear(GL_COLOR_BUFFER_BIT);
+
+			//glDisable(GL_BLEND);
+			//reflection_probe_fbo->color_textures[0]->toViewport();
+			//glEnable(GL_BLEND);
+			//illumination_fbo->unbind();
+		}
+		reflections_shader->setUniform("u_scene_reflections", 1);
+	}
+	else {
+		//reflections_shader->setUniform("u_screen_texture", illumination_fbo->color_textures[0], 0);
+		reflections_shader->setUniform("u_scene_reflections", 0);
+		reflections_shader->setUniform("u_skybox_texture", Texture::getBlackTexture(), 4);
+	}
+
+	reflections_shader->setUniform("u_gb0_texture", gbuffers_fbo->color_textures[0], 2);
+	if (gamma)
+		reflections_shader->setUniform("u_gamma", 1);
+	else
+		reflections_shader->setUniform("u_gamma", 0);
+	reflections_shader->setUniform("u_screen_texture", illumination_fbo->color_textures[0], 0);
+
+
+	quad->render(GL_TRIANGLES);
+	reflection_fbo->unbind();
+
 	// METER EN UNA FUNCIÓN
 	for (int i = 0; i < lights.size(); i++){
 		LightEntity* light = lights[i];
@@ -1226,16 +1305,16 @@ void GTR::Renderer::renderDeferred(Camera* camera)
 			}
 			volumetric_fbo->unbind();
 
-			illumination_fbo->bind();
+			reflection_fbo->bind();
 			glEnable(GL_BLEND);
 			glBlendFunc(GL_SRC_ALPHA, GL_ONE);
 			volumetric_fbo->color_textures[0]->toViewport();
 			glDisable(GL_BLEND);
-			illumination_fbo->unbind();
+			reflection_fbo->unbind();
 		}
 	}
 
-	Texture* finalFX = applyFX(camera, illumination_fbo->color_textures[0], gbuffers_fbo->depth_texture);
+	Texture* finalFX = applyFX(camera, reflection_fbo->color_textures[0], gbuffers_fbo->depth_texture);
 
 	glDisable(GL_BLEND);
 	applyColorCorrection(finalFX);
@@ -1252,11 +1331,11 @@ void GTR::Renderer::renderDeferred(Camera* camera)
 	glDisable(GL_CULL_FACE);
 	glFrontFace(GL_CCW);
 
-	//if (volumetric && direct_light) {
-	//	glEnable(GL_BLEND);
-	//	glBlendFunc(GL_SRC_ALPHA, GL_ONE);
-	//	volumetric_fbo->color_textures[0]->toViewport();
-	//	glDisable(GL_BLEND);
+	reflection_fbo->color_textures[0]->toViewport();
+	//if (scene_reflection && reflection_probes.size()) {
+	//	//glEnable(GL_BLEND);
+	//	//glBlendFunc(GL_SRC_ALPHA, GL_ONE);
+	//	//glDisable(GL_BLEND);
 	//}
 
 }
@@ -1949,7 +2028,7 @@ void Renderer::captureIrradianceProbe(sProbe& probe) {
 	probe.sh = computeSH(images);
 }
 
-void GTR::Renderer::saveProbesToDisk()
+void GTR::Renderer::saveIrradianceProbesToDisk()
 {
 	Scene* scene = Scene::instance;
 
@@ -1973,7 +2052,7 @@ void GTR::Renderer::saveProbesToDisk()
 	fclose(f);
 }
 
-bool GTR::Renderer::loadProbesFromDisk()
+bool GTR::Renderer::loadIrradianceProbesFromDisk()
 {
 	Scene* scene = Scene::instance;
 
@@ -2031,6 +2110,79 @@ bool GTR::Renderer::loadProbesFromDisk()
 	delete[] sh_data;
 	probes_texture->unbind();
 }
+
+//void GTR::Renderer::saveReflectionProbesToDisk()
+//{
+//	Scene* scene = Scene::instance;
+//
+//	//fill header structure
+//	sIrrHeader header;
+//
+//	FILE* f;
+//	//write to file header and probes data
+//	if (scene->scene_type == GTR::Scene::eSceneType::DEFAULT)
+//		f = fopen("default_reflection.bin", "wb");
+//	else if (scene->scene_type == GTR::Scene::eSceneType::SPONZA)
+//		f = fopen("sponza_reflection.bin", "wb");
+//
+//	fwrite(&header, sizeof(header), 1, f);
+//	fwrite(&(irradiance_probes[0]), sizeof(sProbe), irradiance_probes.size(), f);
+//	fclose(f);
+//}
+
+//bool GTR::Renderer::loadReflectionProbesFromDisk()
+//{
+//	Scene* scene = Scene::instance;
+//
+//	const char* filename;
+//	if (scene->scene_type == GTR::Scene::eSceneType::DEFAULT)
+//		filename = "default_reflection.bin";
+//	else if (scene->scene_type == GTR::Scene::eSceneType::SPONZA)
+//		filename = "sponza_reflection.bin";
+//	//load probes info from disk
+//	FILE* f = fopen(filename, "rb");
+//	if (!f)
+//		return false;
+//	//read header
+//	sIrrHeader header;
+//	fread(&header, sizeof(header), 1, f);
+//	//irradiance_delta = header.delta;
+//	int num_probes = header.num_probes;
+//	//allocate space for the probes
+//	irradiance_probes.resize(num_probes);
+//	//read from disk directly to our probes container in memory
+//	fread(&irradiance_probes[0], sizeof(sProbe), irradiance_probes.size(), f);
+//	fclose(f);
+//	//build the texture again…
+//	if (probes_texture != NULL)
+//		delete probes_texture;
+//
+//
+//	// AIXÒ S'HAURIA DE POSAR EN UNA FUNCIÓ
+//	probes_texture = new Texture(
+//		9, //9 coefficients per probe
+//		irradiance_probes.size(), //as many rows as probes
+//		GL_RGB, //3 channels per coefficient
+//		GL_FLOAT); //they require a high range
+//		//we must create the color information for the texture. because every
+//	//SH are 27 floats in the RGB, RGB, ... order, we can create an array of
+//	//SphericalHarmonics and use it as pixels of the texture
+//	SphericalHarmonics* sh_data = NULL;
+//	// ESTO ES UN ARRAY DE LOS 9 COEFICIENTES DE CADA PROBE QUE MIDE ANCHO POR ALTO POR PROFUNDIDAD
+//	sh_data = new SphericalHarmonics[dim_irr.x * dim_irr.y * dim_irr.z];
+//	//here we fill the data of the array with our probes in x,y,z order
+//	for (int i = 0; i < irradiance_probes.size(); ++i)
+//		sh_data[i] = irradiance_probes[i].sh;
+//	//now upload the data to the GPU as a texture
+//	probes_texture->upload(GL_RGB, GL_FLOAT, false, (uint8*)sh_data);
+//	//disable any texture filtering when reading
+//	probes_texture->bind();
+//	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+//	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+//	//always free memory after allocating it!!!
+//	delete[] sh_data;
+//	probes_texture->unbind();
+//}
 
 void GTR::Renderer::computeIrradianceDeferred(Matrix44 inv_vp)
 {
@@ -2198,6 +2350,7 @@ void GTR::Renderer::generateReflectionProbes() {
 				p1->cubemap = new Texture();
 				p1->cubemap->createCubemap(512, 512, NULL, GL_RGB, GL_UNSIGNED_INT, false);
 			}
+			// HI HA UNA PROBE QUE S'ESTÀ RENDERITZANT JUST SOBRE EL COTXE, NO SÉ SI POT ESTAR INTERFERINT I PER AIXÒ EL COTXE ES VEU MASSA NEGRE
 			reflection_probes.push_back(p1);
 
 			sReflectionProbe* p2 = new sReflectionProbe();
@@ -2208,7 +2361,7 @@ void GTR::Renderer::generateReflectionProbes() {
 				p2->cubemap = new Texture();
 				p2->cubemap->createCubemap(512, 512, NULL, GL_RGB, GL_UNSIGNED_INT, false);
 			}
-			reflection_probes.push_back(p2);
+			//reflection_probes.push_back(p2);
 
 			sReflectionProbe* p3 = new sReflectionProbe();
 			posX = centerWorld.x - halfSize.y + p3->size;
@@ -2218,7 +2371,7 @@ void GTR::Renderer::generateReflectionProbes() {
 				p3->cubemap = new Texture();
 				p3->cubemap->createCubemap(512, 512, NULL, GL_RGB, GL_UNSIGNED_INT, false);
 			}
-			reflection_probes.push_back(p3);
+			//reflection_probes.push_back(p3);
 
 			sReflectionProbe* p4 = new sReflectionProbe();
 			float posZ = centerWorld.z + halfSize.z + p4->size;
@@ -2228,7 +2381,7 @@ void GTR::Renderer::generateReflectionProbes() {
 				p4->cubemap = new Texture();
 				p4->cubemap->createCubemap(512, 512, NULL, GL_RGB, GL_UNSIGNED_INT, false);
 			}
-			reflection_probes.push_back(p4);
+			//reflection_probes.push_back(p4);
 
 			sReflectionProbe* p5 = new sReflectionProbe();
 			posZ = centerWorld.z + halfSize.z + p5->size;
@@ -2238,7 +2391,7 @@ void GTR::Renderer::generateReflectionProbes() {
 				p5->cubemap = new Texture();
 				p5->cubemap->createCubemap(512, 512, NULL, GL_RGB, GL_UNSIGNED_INT, false);
 			}
-			reflection_probes.push_back(p5);
+			//reflection_probes.push_back(p5);
 
 		}
 	}
@@ -2337,22 +2490,34 @@ Texture* GTR::Renderer::applyFX(Camera* camera, Texture* color_texture, Texture*
 	Texture* current_texture = color_texture;
 	Shader* fxshader = NULL;
 
-	FBO* fbo = Texture::getGlobalFBO(postFX_textureA);
-	fbo->bind();
-	Matrix44 inv_vp = camera->viewprojection_matrix;
-	inv_vp.inverse();
+	//if (depth_field) {
+	//	fxshader = Shader::Get("depth_field");
+	//	fxshader->enable();
+	//	fxshader->setUniform("u_depth_texture", depth_texture, 1);
+	//	//fxshader->setUniform("u_inverse_viewprojection", inv_vp);
+	//	//fxshader->setUniform("u_viewprojection_last", vp_matrix_last);
+	//	current_texture->toViewport(fxshader);
+	//	fbo->unbind();
+	//	current_texture = postFX_textureA;
+	//	std::swap(postFX_textureA, postFX_textureB);
+	//}
 
-	fxshader = Shader::Get("motionblur");
-	fxshader->enable();
-	fxshader->setUniform("u_depth_texture", depth_texture, 1);
-	fxshader->setUniform("u_inverse_viewprojection", inv_vp);
-	fxshader->setUniform("u_viewprojection_last", vp_matrix_last);
-	current_texture->toViewport(fxshader);
-	fbo->unbind();
-	current_texture = postFX_textureA;
-	std::swap(postFX_textureA, postFX_textureB);
+	//FBO* fbo = Texture::getGlobalFBO(postFX_textureA);
+	//fbo->bind();
+	//Matrix44 inv_vp = camera->viewprojection_matrix;
+	//inv_vp.inverse();
 
-	vp_matrix_last = camera->viewprojection_matrix;
+	//fxshader = Shader::Get("motionblur");
+	//fxshader->enable();
+	//fxshader->setUniform("u_depth_texture", depth_texture, 1);
+	//fxshader->setUniform("u_inverse_viewprojection", inv_vp);
+	//fxshader->setUniform("u_viewprojection_last", vp_matrix_last);
+	//current_texture->toViewport(fxshader);
+	//fbo->unbind();
+	//current_texture = postFX_textureA;
+	//std::swap(postFX_textureA, postFX_textureB);
+
+	//vp_matrix_last = camera->viewprojection_matrix;
 
 	//// -- Greyscale --
 	//if (saturation) {

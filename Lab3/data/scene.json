@@ -10,7 +10,8 @@
 			"name":"floor",
 			"type":"PREFAB",
 			"filename":"prefabs/floor.glb",
-			"position":[0,0,0]
+			"position":[0,0,0],
+			"planar_reflections": true
 		},
 		{
 			"name":"decal",
