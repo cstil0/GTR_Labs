@@ -48,8 +48,8 @@
 			"name":"mirror",
 			"type":"PREFAB",
 			"filename":"prefabs/mirror/scene.gltf",
-			"position":[129,-1.7,21.59],
-			"angle":90,
+			"position":[-234.42,-1.7,1.8],
+			"angle":-98,
 			"scale": [22, 22, 22]
 		},
 		{

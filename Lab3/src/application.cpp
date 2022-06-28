@@ -325,6 +325,7 @@ void Application::renderDebugGUI(void)
 		ImGui::TreePop();
 	}
 	if (ImGui::TreeNode("PostFX")) {
+		ImGui::Checkbox("Antialiasing", &renderer->antialiasing);
 		ImGui::Checkbox("Greyscale", &renderer->saturation);
 		ImGui::Checkbox("Lens distortion", &renderer->lens_distortion);
 		ImGui::Checkbox("Contrast", &renderer->contrast);

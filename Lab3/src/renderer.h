@@ -101,7 +101,6 @@ namespace GTR {
 		FBO* gbuffers_fbo;
 		FBO* illumination_fbo;
 		FBO* irr_fbo;
-		FBO* reflection_probe_fbo;
 		FBO* screen_fbo;
 		FBO* ssao_fbo;
 		FBO* decals_fbo;
@@ -126,6 +125,10 @@ namespace GTR {
 		bool show_buffers;
 		bool show_ssao;
 		bool pbr;
+		bool global_metrough;
+
+		float global_metalness;
+		float global_roughness;
 
 		ePipeline pipeline;
 		int typeOfRender;
@@ -167,6 +170,7 @@ namespace GTR {
 		// reflections
 		std::vector<sReflectionProbe*> reflection_probes;
 		FBO* reflection_fbo;
+		FBO* reflection_probe_fbo;
 		bool is_rendering_reflections;
 		bool is_rendering_planar_reflections;
 		bool planar_reflection;
@@ -184,6 +188,7 @@ namespace GTR {
 		bool contrast;
 		bool simple_glow;
 		bool depth_field;
+		bool antialiasing;
 
 		float saturation_intensity;
 		float vigneting_intensity;
