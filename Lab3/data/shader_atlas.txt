@@ -29,6 +29,7 @@ threshold quad.vs threshold.fs
 motionblur quad.vs motionblur.fs
 depth_field quad.vs depth_field.fs
 antialiasing quad.vs antialiasing.fs
+grain quad.vs grain.fs
 depth quad.vs depth.fs
 
 // ------------------------------ Uniforms ------------------------------
@@ -2826,6 +2827,41 @@ void main(){
 		color = vec4(rgbB, 1.0);
 	
 	FragColor = color;
+}
+
+//--------------------------------- Grain -------------------------------
+\grain.fs
+#version 330 core
+
+in vec2 v_uv;
+precision highp float;
+uniform sampler2D u_texture;
+uniform sampler2D u_random_texture;
+uniform vec3 u_camera_position;
+uniform vec3 u_camera_direction;
+uniform vec2 u_iRes;
+
+out vec4 FragColor;
+
+vec2 rand(vec2 co){
+    float x = fract(sin(dot(co, vec2(12.9898, 78.233))) * 43758.5453);
+	float y = fract(1e4 * sin(17.0 * co.x + co.y * 0.1) * (0.1 + abs(sin(co.y * 13.0 + co.x))));
+	return vec2(x, y);
+}
+
+const float E = 2.71828182845;
+
+void main() {
+	vec2 uv = gl_FragCoord.xy * u_iRes.xy;
+
+	float L = length(u_camera_position);
+	float D = length(u_camera_direction);
+	vec2 random = rand(uv * L * D);
+
+	vec4 color = texture(u_texture, v_uv);
+   	vec4 randomText = texture( u_random_texture, random );
+	
+  	FragColor = color * vec4(random, random);
 }
 
 //--------------------------------- Skybox -------------------------------

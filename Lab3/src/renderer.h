@@ -112,6 +112,8 @@ namespace GTR {
 		Texture* postFX_textureB;
 		Texture* postFX_textureC;
 		Texture* postFX_textureD;
+		Texture* randomTexture;
+
 
 		// debuging use -- borrar
 		Texture* irradiance_texture;
@@ -189,6 +191,7 @@ namespace GTR {
 		bool simple_glow;
 		bool depth_field;
 		bool antialiasing;
+		bool grain;
 
 		float saturation_intensity;
 		float vigneting_intensity;

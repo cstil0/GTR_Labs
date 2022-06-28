@@ -46,6 +46,8 @@ GTR::Renderer::Renderer()
 	postFX_textureB = NULL;
 	postFX_textureC = NULL;
 	postFX_textureD = NULL;
+	Texture* randomTexture = Texture::Get("data/textures/grainyNoise.jpg");
+
 
 	// Debug parameters
 	show_shadowmap = false;
@@ -111,6 +113,7 @@ GTR::Renderer::Renderer()
 	simple_glow = true;
 	depth_field = true;
 	antialiasing = true;
+	grain = true;
 
 	saturation_intensity = 1.0;
 	vigneting_intensity = 0.0;
@@ -2744,6 +2747,23 @@ Texture* GTR::Renderer::applyFX(Camera* camera, Texture* color_texture, Texture*
 
 		current_texture = postFX_textureB;
 		std::swap(postFX_textureA, postFX_textureB);
+	}
+
+	if (grain) {
+		//Depth of field
+		fbo = Texture::getGlobalFBO(postFX_textureA);
+		fbo->bind();
+		fxshader = Shader::Get("grain");
+		fxshader->enable();
+		fxshader->setUniform("u_texture", color_texture, 0);
+		//fxshader->setUniform("u_random_texture", randomTexture, 1);
+		fxshader->setUniform("u_camera_position", camera->eye);
+		fxshader->setUniform("u_camera_direction", camera->center);
+
+		fxshader->setUniform("u_iRes", Vector2(1 / (float)Application::instance->window_width, 1 / (float)Application::instance->window_height));
+		current_texture->toViewport(fxshader);
+		fbo->unbind();
+
 	}
 	
 	//return color_texture;
