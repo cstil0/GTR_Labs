@@ -425,17 +425,35 @@ void Renderer::showShadowmap(LightEntity* light) {
 	if (!shadowmap)
 		return;
 
-	Shader* depth_shader = Shader::getDefaultShader("depth");
-	depth_shader->enable();
-	// set uniforms to delinearize shadowmap texture
-	depth_shader->setUniform("u_camera_nearfar", Vector2(light->light_camera->near_plane, light->light_camera->far_plane));
+	Texture* lin_depth = lineralizeDepth(shadowmap, Vector2(light->light_camera->near_plane, light->light_camera->far_plane));
+
+	//Shader* depth_shader = Shader::getDefaultShader("depth");
+	//depth_shader->enable();
+	//// set uniforms to delinearize shadowmap texture
+	//depth_shader->setUniform("u_camera_nearfar", Vector2(light->light_camera->near_plane, light->light_camera->far_plane));
 	glViewport(0, 0, 256, 256);
 
-	shadowmap->toViewport(depth_shader);
+	lin_depth->toViewport();
+	//shadowmap->toViewport(depth_shader);
 
 	// return to default
 	glViewport(0, 0, Application::instance->window_width, Application::instance->window_height);
 	glEnable(GL_DEPTH_TEST);
+}
+
+Texture* Renderer::lineralizeDepth(Texture* depth, Vector2 camera_nearfar) {
+	Shader* depth_shader = Shader::getDefaultShader("depth");
+	depth_shader->enable();
+	// set uniforms to delinearize shadowmap texture
+	depth_shader->setUniform("u_camera_nearfar", camera_nearfar);
+
+	Texture* lin_depth = new Texture(Application::instance->window_width, Application::instance->window_height, GL_RGB, GL_FLOAT);;
+	FBO* fbo = Texture::getGlobalFBO(lin_depth);
+	fbo->bind();
+	depth->toViewport(depth_shader);
+	fbo->unbind();
+
+	return lin_depth;
 }
 
 // --- Render functions ---
@@ -1328,7 +1346,9 @@ void GTR::Renderer::renderDeferred(Camera* camera)
 	glEnable(GL_DEPTH_TEST);
 	glDisable(GL_CULL_FACE);
 	glFrontFace(GL_CCW);
-
+	
+	//Texture* lin_depth = lineralizeDepth(gbuffers_fbo->depth_texture, Vector2(camera->near_plane, camera->far_plane));
+	//lin_depth->toViewport();
 	//reflection_fbo->color_textures[0]->toViewport();
 	//finalFX->toViewport();
 	//if (scene_reflection && reflection_probes.size()) {
@@ -2660,12 +2680,14 @@ Texture* GTR::Renderer::applyFX(Camera* camera, Texture* color_texture, Texture*
 	}
 
 	if (depth_field) {
+		Texture* lin_depth = lineralizeDepth(depth_texture, Vector2(camera->near_plane, camera->far_plane));
 		//Depth of field
 		fbo = Texture::getGlobalFBO(postFX_textureA);
 		fbo->bind();
 		fxshader = Shader::Get("depth_field");
 		fxshader->enable();
 		fxshader->setUniform("u_depth_texture", depth_texture, 1);
+		fxshader->setUniform("u_lin_depth_texture", lin_depth, 2);
 		Matrix44 inv_vp = camera->viewprojection_matrix;
 		inv_vp.inverse();
 		fxshader->setUniform("u_inverse_viewprojection", inv_vp);

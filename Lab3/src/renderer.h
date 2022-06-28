@@ -222,6 +222,8 @@ namespace GTR {
 		void generateIrradianceProbes();
 		void showShadowmap(LightEntity* light);
 
+		Texture* lineralizeDepth(Texture* depth, Vector2 camera_nearfar);
+
 		// -- Render functions --
 		
 		//renders several elements of the scene
@@ -282,6 +284,7 @@ namespace GTR {
 
 		Texture* applyFX(Camera* camera, Texture* color_texture, Texture* depth_texture);
 
+		// FUERA
 		void reloadRenderer();
 };
 

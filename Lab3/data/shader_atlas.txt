@@ -2715,6 +2715,7 @@ in vec2 v_uv;
 precision highp float;
 uniform sampler2D u_texture;
 uniform sampler2D u_depth_texture;
+uniform sampler2D u_lin_depth_texture;
 uniform mat4 u_inverse_viewprojection;
 uniform vec3 u_camera_position;
 uniform vec2 u_iRes;
@@ -2738,6 +2739,7 @@ void main() {
 
 	vec4 color = texture(u_texture, uv);
    	float depth = texture( u_depth_texture, uv ).x;
+   	float lin_depth = texture( u_lin_depth_texture, uv ).x;
 	vec4 screen_pos = vec4(uv.x*2.0-1.0, uv.y*2.0-1.0, depth*2.0-1.0, 1.0);
 	vec4 proj_worldpos = u_inverse_viewprojection * screen_pos;
 	vec3 world_position = proj_worldpos.xyz / proj_worldpos.w;
@@ -2746,10 +2748,9 @@ void main() {
 	//float CoC_num = u_apperture * (u_focal_length * (u_plane_focus - depth));
 	//float CoC_den = depth * (u_plane_focus - u_focal_length);
 	//float CoC = abs(CoC_num / CoC_den);
-	float CoC = (depth - u_focal_length) / u_focal_range;
+	float CoC = (lin_depth - u_focal_length) / u_focal_range;
 
 	CoC = clamp(CoC, 0.0, 20);
-	CoC /= 20;
 	//vec3 camera_dist = world_position - u_camera_position;
 
 	//vec3 offset_vec = camera_dist - u_focal_length;
@@ -2761,15 +2762,14 @@ void main() {
 		float deviation_squared = u_standard_deviation*u_standard_deviation;
 		float gauss = u_gaussian_comp * pow(E, -((offset*offset)/(2*deviation_squared)));
 		float sample_dist = i - floor(CoC/2);
-		//sum += texture2D(u_texture, uv + offset * sample_dist) * gauss;
+		sum += texture2D(u_texture, uv + offset * sample_dist) * gauss;
 		//sum += texture2D(u_texture, uv + u_offset * sample_dist) * gauss;
 	}
 
 	vec4 final_blur = sum;
 
-
   	FragColor = color;
-  	//FragColor = vec4( world_position.z);
+  	//FragColor = vec4(CoC);
 }
 
 // ---------------------------------- Antialiasing ---------------------------------
