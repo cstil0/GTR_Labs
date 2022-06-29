@@ -231,16 +231,6 @@
 			"light_type":"POINT"
 		},
 		{
-			"name":"pointlight8",
-			"type":"LIGHT",
-			"position":[208.6,281,-33.6],
-			"angle": 0,
-			"color":[1,0.57,0.51],
-			"intensity":3.7,
-			"max_dist":220,
-			"light_type":"POINT"
-		},
-		{
 			"name":"moonlight",
 			"type":"LIGHT",
 			"position":[150,300,50],

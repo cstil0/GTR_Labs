@@ -55,7 +55,7 @@ GTR::Renderer::Renderer()
 	debug_shadowmap = 7;
 	debug_texture = eTextureType::COMPLETE;
 	show_buffers = false;
-	pbr = true;
+	pbr = false;
 	show_probes_texture = false;
 	show_probes = false;
 	shadow_flag = true;
@@ -124,10 +124,11 @@ GTR::Renderer::Renderer()
 	simglow_mix_factor = 1.0;
 	simglow_threshold = 0.9;
 	perfglow_iterations = 4;
-	apperture = 1.4;
-	focal_length = 0.7;
-	focal_range = 0.07;
+	apperture = 1.9;
+	focal_length = 2.2;
+	focal_range = 0.043;
 	show_depth_field = false;
+	grainIntensity = 0.3;
 	//plane_focus = 1.0;
 	//image_distance = 1.0;
 
@@ -809,6 +810,13 @@ void GTR::Renderer::renderTransparentMaterial(const Matrix44 model, Mesh* mesh, 
 	shader->setUniform("u_light_color", Vector3(0.0, 0.0, 0.0));
 	shader->setUniform("u_light_is_first", true);
 
+	GLenum status = glCheckFramebufferStatusEXT(GL_FRAMEBUFFER_EXT);
+	if (status != GL_FRAMEBUFFER_COMPLETE_EXT)
+	{
+		std::cout << "Error: Framebuffer object is not completed: " << status << std::endl;
+		assert(0);
+	}
+
 	mesh->render(GL_TRIANGLES);
 
 	shader->disable();
@@ -960,7 +968,6 @@ void GTR::Renderer::renderForward(Camera* camera, FBO* fboToRender = NULL)
 			true);
 	}
 
-
 	if (typeOfRender == eRenderPipeline::MULTIPASS) {
 		// take the texture from the fbo and store it in another variable
 		// TO KNOW WHICH FBO IS BINDED
@@ -1029,6 +1036,8 @@ void GTR::Renderer::renderForward(Camera* camera, FBO* fboToRender = NULL)
 
 		glEnable(GL_DEPTH_TEST);
 	}
+	else
+		screen_texture->toViewport();
 }
 
 // Deferred pipeline
@@ -1041,7 +1050,6 @@ void GTR::Renderer::renderDeferred(Camera* camera)
 	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 	checkGLErrors();
 
-	renderSkybox(camera, scene->skybox);
 
 	int width = Application::instance->window_width;
 	int height = Application::instance->window_height;
@@ -1066,7 +1074,7 @@ void GTR::Renderer::renderDeferred(Camera* camera)
 		// fbo to compute the illumination for each pixel
 		illumination_fbo->create(width, height,
 			1,
-			GL_RGBA,
+			GL_RGB,
 			GL_FLOAT,
 			true);
 	}
@@ -1209,7 +1217,7 @@ void GTR::Renderer::renderDeferred(Camera* camera)
 		if (reflection_probes.size() && !is_rendering_reflections)
 		{
 			int nearest_index = -1;
-			float nearest_distance = 1000000.0;
+			float nearest_distance = 10000000000000000.0;
 			// search which probe is the nearest one
 			for (int i = 0; i < reflection_probes.size(); i++) {
 				Vector3 camera_position= camera->eye;
@@ -1300,6 +1308,7 @@ void GTR::Renderer::renderDeferred(Camera* camera)
 			vol_shader->setUniform("u_viewprojection", camera->viewprojection_matrix);
 			//pass the inverse projection of the camera to reconstruct world pos.
 			vol_shader->setUniform("u_inverse_viewprojection", inv_vp);
+			vol_shader->setUniform("u_gamma", (int)gamma);
 			//pass the inverse window resolution, this may be useful
 			vol_shader->setUniform("u_iRes", Vector2(1.0 / (float)volumetric_fbo->color_textures[0]->width, 1.0 / (float)volumetric_fbo->color_textures[0]->height));
 			vol_shader->setUniform("u_air_density", scene->air_density * 0.001f);
@@ -1332,11 +1341,9 @@ void GTR::Renderer::renderDeferred(Camera* camera)
 			volumetric_fbo->unbind();
 
 			reflection_fbo->bind();
-
-			//reflection_fbo->bind();
 			glEnable(GL_BLEND);
 			glBlendFunc(GL_SRC_ALPHA, GL_ONE);
-			reflection_fbo->color_textures[0]->toViewport();
+			volumetric_fbo->color_textures[0]->toViewport();
 			glDisable(GL_BLEND);
 			reflection_fbo->unbind();
 		}
@@ -1364,7 +1371,7 @@ void GTR::Renderer::renderDeferred(Camera* camera)
 	glEnable(GL_DEPTH_TEST);
 	glDisable(GL_CULL_FACE);
 	glFrontFace(GL_CCW);
-	
+
 	//Texture* lin_depth = lineralizeDepth(gbuffers_fbo->depth_texture, Vector2(camera->near_plane, camera->far_plane));
 	//lin_depth->toViewport();
 	//reflection_fbo->color_textures[0]->toViewport();
@@ -1408,6 +1415,8 @@ void GTR::Renderer::generateGBuffers(Camera* camera)
 
 	glClearColor(scene->background_color.x, scene->background_color.y, scene->background_color.z, 1.0);
 	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+
+	renderSkybox(camera, scene->skybox);
 
 	// render in gbuffer
 	for (int i = 0; i < render_calls.size(); ++i) {
@@ -2833,7 +2842,7 @@ Texture* GTR::Renderer::applyBlurring(Shader* fxshader, Texture* draw_texture1, 
 		read_texture = draw_texture2;
 	}
 
-	return draw_texture1;
+	return draw_texture2;
 }
 
 Texture* GTR::Renderer::applyDepthField(Shader* fxshader, Camera* camera, Texture* draw_texture1, Texture* draw_texture2, Texture* draw_texture3, Texture* draw_texture4, Texture* read_texture, Texture* depth_texture) {
@@ -2889,11 +2898,10 @@ Texture* GTR::Renderer::applyDepthField(Shader* fxshader, Camera* camera, Textur
 
 	//	read_texture = draw_texture2;
 	//}
-	draw_texture4 = applyBlurring(fxshader, draw_texture1, draw_texture2, read_texture, 5);
+	draw_texture4 = applyBlurring(fxshader, draw_texture1, draw_texture2, read_texture, 2);
 
 	// Texture 1 has blur information
 	//std::swap(draw_texture1, draw_texture2);
-
 
 
 	lineralizeDepth(depth_texture, Vector2(camera->near_plane, camera->far_plane));
@@ -2941,6 +2949,7 @@ Texture* GTR::Renderer::applyGrain(Shader* fxshader, Camera* camera, Texture* dr
 	fxshader->enable();
 	fxshader->setUniform("u_camera_position", camera->eye);
 	fxshader->setUniform("u_camera_direction", camera->center);
+	fxshader->setUniform("u_intensity", grainIntensity);
 
 	fxshader->setUniform("u_iRes", Vector2(1 / (float)Application::instance->window_width, 1 / (float)Application::instance->window_height));
 	read_texture->toViewport(fxshader);

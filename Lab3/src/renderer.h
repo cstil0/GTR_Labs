@@ -206,6 +206,7 @@ namespace GTR {
 		float focal_length;
 		float focal_range;
 		bool show_depth_field;
+		float grainIntensity;
 		//float plane_focus;
 		//float image_distance;
 

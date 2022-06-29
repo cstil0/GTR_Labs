@@ -345,6 +345,7 @@ void Application::renderDebugGUI(void)
 			ImGui::SliderFloat("Focal Length Depth Field", &renderer->focal_length, 0.0, 3.0);
 			ImGui::SliderFloat("Focal Range Depth Field", &renderer->focal_range, 0.01, 3.0);
 			ImGui::Checkbox("Show depth of field", &renderer->show_depth_field);
+			ImGui::SliderFloat("Grain Intensiry", &renderer->grainIntensity, 0.01, 1.0);
 			//ImGui::SliderFloat("Plane Focus Depth Field", &renderer->plane_focus, 0.0, 3.0);
 			//ImGui::SliderFloat("Image Distance Depth Field", &renderer->image_distance, 0.0, 3.0);
 			ImGui::TreePop();

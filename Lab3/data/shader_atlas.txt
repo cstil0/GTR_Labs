@@ -1217,7 +1217,7 @@ void main(){
 	float depth = texture(u_depth_texture, v_uv).x;
 	// discard background pixels to avoid artifacts
 	if (depth == 1.0){
-		discard;
+		//discard;
 	}
 
 	if (u_tonemapping == 1){
@@ -1598,7 +1598,6 @@ void main()
 	// Occlusion value is only in one coordinate
 	light *= occlusion;
 
-	//FragColor = vec4(texture(u_gb2_texture, uv).w);
 	FragColor = vec4(light, 1.0);
 }
 
@@ -1801,14 +1800,6 @@ void main()
 	//now we can use the coefficients to compute the irradiance
 	vec3 irradiance = ComputeSHIrradiance( N, sh );
 
-	//fill the coefficients
-	//const float d_uvx = 1.0 / 9.0;
-	//for(int i = 0; i < 9; ++i)
-	//{
-	//	vec2 coeffs_uv = vec2( (float(i)+0.5) * d_uvx, row_uv );
-	//	sh.c[i] = texture( u_probes_texture, coeffs_uv).xyz;
-	//}
-
 	FragColor = vec4(irradiance,1.0);
 }
 
@@ -1855,8 +1846,6 @@ void main()
 		FragColor = vec4(1.0);
 		return;
 	}
-
-	//vec4 original_point = gl_FragCoord;
 
 	vec4 screen_pos = vec4(uv.x*2.0-1.0, uv.y*2.0-1.0, depth*2.0-1.0, 1.0 );
 	vec4 proj_worldpos = u_inverse_viewprojection * screen_pos;
@@ -2161,7 +2150,6 @@ uniform mat4 u_viewprojection;
 uniform mat4 u_inverse_viewprojection;
 uniform vec2 u_iRes;
 
-//#include light_uniforms
 #include degamma
 
 out vec4 FragColor;
@@ -2188,7 +2176,6 @@ void main()
 
 	vec3 reflection_color = vec3(0.0);
 	reflection_color = textureLod(u_skybox_texture, R, roughness * 4.0).xyz;
-	//reflection_color = texture(u_skybox_texture, R).xyz;
 
 	if (u_gamma == 1){
 		reflection_color = degamma(reflection_color);
@@ -2199,9 +2186,6 @@ void main()
 	color.xyz = mix(color.xyz, reflection_color, reflection_factor);
 
 	FragColor = color;
-	//FragColor = texture(u_screen_texture, uv);
-	//FragColor = vec4(N, 1.0); 
-	//FragColor = vec4(0.0, 1.0, 0.0, 1.0); 
 
 }
 
@@ -2221,9 +2205,10 @@ uniform mat4 u_viewprojection;
 uniform mat4 u_inverse_viewprojection;
 uniform vec2 u_iRes;
 uniform float u_air_density;
+uniform int u_gamma;
 
 #include light_uniforms
-
+#include degamma
 
 out vec4 FragColor;
 
@@ -2280,6 +2265,12 @@ void main()
 
 	vec3 color = vec3(0.0);
 
+	vec3 light_color = u_light_color;
+	vec3 light = vec3(0.0);
+	//if (u_gamma == 1){
+	//	light_color = degamma(light_color);
+	//}
+
 	vec3 ray_start = u_camera_position;
 	vec3 ray_dir = world_position - ray_start;
 	float ray_length = length(ray_dir);
@@ -2302,7 +2293,7 @@ void main()
 		//evaluate contribution
 		//compute illumination in this point
 		float shadow = testShadowMap(current_pos);
-		vec3 light = u_light_color * shadow;
+		light = light_color * shadow;
 
 		// CON ESTO PODEMOS HACER QUE FACILMENTE FUNCIONE TAMBIÉN PARA SPOLIGHT
 		//light *= att;
@@ -2321,12 +2312,8 @@ void main()
 		current_pos.xyz += ray_offset;
 	}
 
-	// ESTO ES SOLO POR QUE A JAVI NO LE FUNCIONABA, PERO LA FORMA CORRECTA DE HACERLO ES LA DE LAS SLIDES
-	//irradiance = vec3(1.0) * in_light /float(SAMPLES);
 
-	//irradiance = vec3(1.0, 0.0, 0.0);
 	FragColor = vec4(irradiance, 1.0 - transparency);
-	//FragColor = vec4(1.0, 0.0, 0.0, 1.0 - transparency);
 
 }
 
@@ -2781,6 +2768,7 @@ void main() {
 		FragColor = mix(colorA, colorB, blur);
 	else
 		FragColor = vec4(blur);
+//	FragColor = colorB;
 }
 
 // ---------------------------------- Antialiasing ---------------------------------
@@ -2851,6 +2839,8 @@ uniform vec3 u_camera_position;
 uniform vec3 u_camera_direction;
 uniform vec2 u_iRes;
 
+uniform float u_intensity;
+
 out vec4 FragColor;
 
 vec2 rand(vec2 co){
@@ -2869,9 +2859,9 @@ void main() {
 	vec2 random = rand(uv * L * D);
 
 	vec4 color = texture(u_texture, v_uv);
-   	vec4 randomText = texture( u_random_texture, random );
+   	vec4 randomText = texture( u_random_texture, random ) * u_intensity;
 	
-  	FragColor = color * vec4(random, random);
+  	FragColor = mix(color, randomText, u_intensity);
 }
 
 //--------------------------------- Skybox -------------------------------
