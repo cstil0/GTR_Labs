@@ -105,6 +105,7 @@ namespace GTR {
 		FBO* ssao_fbo;
 		FBO* decals_fbo;
 		FBO* volumetric_fbo;
+		FBO* linear_depth_fbo;
 		Texture* shadowmap;
 		Texture* screen_texture;
 		Texture* probes_texture;
@@ -228,7 +229,7 @@ namespace GTR {
 		void generateIrradianceProbes();
 		void showShadowmap(LightEntity* light);
 
-		Texture* lineralizeDepth(Texture* depth, Vector2 camera_nearfar);
+		void lineralizeDepth(Texture* depth, Vector2 camera_nearfar);
 
 		// -- Render functions --
 		

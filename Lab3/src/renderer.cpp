@@ -38,6 +38,7 @@ GTR::Renderer::Renderer()
 	decals_fbo = NULL;
 	screen_texture = NULL;
 	screen_fbo = NULL;
+	linear_depth_fbo = NULL;
 	probes_texture = NULL;
 	width_shadowmap = 2048;
 	height_shadowmap = 2048;
@@ -431,7 +432,7 @@ void Renderer::showShadowmap(LightEntity* light) {
 	if (!shadowmap)
 		return;
 
-	Texture* lin_depth = lineralizeDepth(shadowmap, Vector2(light->light_camera->near_plane, light->light_camera->far_plane));
+	lineralizeDepth(shadowmap, Vector2(light->light_camera->near_plane, light->light_camera->far_plane));
 
 	//Shader* depth_shader = Shader::getDefaultShader("depth");
 	//depth_shader->enable();
@@ -439,7 +440,7 @@ void Renderer::showShadowmap(LightEntity* light) {
 	//depth_shader->setUniform("u_camera_nearfar", Vector2(light->light_camera->near_plane, light->light_camera->far_plane));
 	glViewport(0, 0, 256, 256);
 
-	lin_depth->toViewport();
+	linear_depth_fbo->color_textures[0]->toViewport();
 	//shadowmap->toViewport(depth_shader);
 
 	// return to default
@@ -447,19 +448,30 @@ void Renderer::showShadowmap(LightEntity* light) {
 	glEnable(GL_DEPTH_TEST);
 }
 
-Texture* Renderer::lineralizeDepth(Texture* depth, Vector2 camera_nearfar) {
+void Renderer::lineralizeDepth(Texture* depth, Vector2 camera_nearfar) {
+	if (!linear_depth_fbo) {
+		linear_depth_fbo = new FBO();
+		// ssao fbo. RGB to avoid problems
+		linear_depth_fbo->create(Application::instance->window_width, Application::instance->window_height,
+			1,
+			GL_RGB,
+			GL_UNSIGNED_BYTE,
+			false);
+	}
+
 	Shader* depth_shader = Shader::getDefaultShader("depth");
 	depth_shader->enable();
 	// set uniforms to delinearize shadowmap texture
 	depth_shader->setUniform("u_camera_nearfar", camera_nearfar);
 
-	Texture* lin_depth = new Texture(Application::instance->window_width, Application::instance->window_height, GL_RGB, GL_FLOAT);;
-	FBO* fbo = Texture::getGlobalFBO(lin_depth);
-	fbo->bind();
+	//Texture* lin_depth = new Texture(Application::instance->window_width, Application::instance->window_height, GL_RGB, GL_FLOAT);;
+	
+	//FBO* fbo = Texture::getGlobalFBO(lin_depth);
+	linear_depth_fbo->bind();
 	depth->toViewport(depth_shader);
-	fbo->unbind();
+	linear_depth_fbo->unbind();
 
-	return lin_depth;
+	//return lin_depth;
 }
 
 // --- Render functions ---
@@ -1570,6 +1582,8 @@ void GTR::Renderer::applyIllumination_deferred(Camera* camera, Matrix44 inv_vp, 
 	////block writing to the ZBuffer so we do not modify it with our geometry
 	//glDepthMask(true);
 	//glFrontFace(GL_CCW);
+	glDisable(GL_BLEND);
+
 }
 
 // to apply color correction given the scene texture
@@ -1920,6 +1934,7 @@ void Renderer::setMultipassParameters(GTR::Material* material, Shader* shader, M
 		emissive_texture = Texture::getBlackTexture();
 		shader->setUniform("u_emissive_texture", emissive_texture, 1);
 	}
+	glDisable(GL_BLEND);
 }
 
 // -- Debug functions --
@@ -2881,7 +2896,7 @@ Texture* GTR::Renderer::applyDepthField(Shader* fxshader, Camera* camera, Textur
 
 
 
-	Texture* lin_depth = lineralizeDepth(depth_texture, Vector2(camera->near_plane, camera->far_plane));
+	lineralizeDepth(depth_texture, Vector2(camera->near_plane, camera->far_plane));
 	//Depth of field
 	fbo = Texture::getGlobalFBO(draw_texture2);
 	fbo->bind();
@@ -2889,7 +2904,7 @@ Texture* GTR::Renderer::applyDepthField(Shader* fxshader, Camera* camera, Textur
 	fxshader->enable();
 	//fxshader->setUniform("u_depth_texture", depth_texture, 1);
 	fxshader->setUniform("u_textureB", draw_texture4, 1);
-	fxshader->setUniform("u_lin_depth_texture", lin_depth, 2);
+	fxshader->setUniform("u_lin_depth_texture", linear_depth_fbo->color_textures[0], 2);
 	fxshader->setUniform("u_focal_length", focal_length);
 	fxshader->setUniform("u_focal_range", focal_range);
 	fxshader->setUniform("u_apperture", apperture);
