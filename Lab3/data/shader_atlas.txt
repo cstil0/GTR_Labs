@@ -25,6 +25,7 @@ lens_distortion quad.vs lens_distortion.fs
 contrast quad.vs contrast.fs
 blur quad.vs blur.fs
 mix quad.vs mix.fs
+interpolation quad.vs interpolation.fs
 threshold quad.vs threshold.fs
 motionblur quad.vs motionblur.fs
 depth_field quad.vs depth_field.fs
@@ -2670,6 +2671,24 @@ void main() {
    FragColor = colorA * u_intensity + colorB;
 }
 
+//--------------------------------- Interpolation -------------------------------
+\interpolation.fs
+#version 330 core
+
+in vec2 v_uv;
+precision highp float;
+uniform sampler2D u_texture;
+uniform sampler2D u_textureB;
+uniform sampler2D u_interpolation_texture;
+out vec4 FragColor;
+
+void main() {
+   vec4 colorA = texture2D(u_texture, v_uv);
+   vec4 colorB = texture2D(u_textureB, v_uv);
+   float interpolation_factor = texture2D(u_interpolation_texture, v_uv).x;
+   FragColor = mix(colorA, colorB, interpolation_factor);
+}
+
 //--------------------------------- Motionblur -------------------------------
 \motionblur.fs
 #version 330 core
@@ -2715,7 +2734,9 @@ void main() {
 in vec2 v_uv;
 precision highp float;
 uniform sampler2D u_texture;
+uniform sampler2D u_textureB;
 uniform sampler2D u_depth_texture;
+uniform int u_show_depth;
 uniform sampler2D u_lin_depth_texture;
 uniform mat4 u_inverse_viewprojection;
 uniform vec3 u_camera_position;
@@ -2723,54 +2744,43 @@ uniform vec2 u_iRes;
 
 uniform float u_focal_length;
 uniform float u_focal_range;
-//uniform float u_apperture;
+uniform float u_apperture;
 //uniform float u_plane_focus;
 uniform float u_standard_deviation;
 uniform float u_gaussian_comp;
 
 uniform vec2 u_offset;
 uniform float u_intensity;
+
 out vec4 FragColor;
 
-
-const float E = 2.71828182845;
+const float CoC = 0.03; //circle of confusion size in mm (35mm film = 0.03mm)
 
 void main() {
-	vec2 uv = gl_FragCoord.xy * u_iRes.xy;
+	vec4 colorA = texture2D(u_texture, v_uv);
+	vec4 colorB = texture2D(u_textureB, v_uv);
+	float depth = texture(u_lin_depth_texture, v_uv).x;
+	float f = u_focal_length;
+	float d = u_focal_range*1000.0; // focal plane in mm,
+	float o = depth*1000.0; // depth in mm,
 
-	vec4 color = texture(u_texture, uv);
-   	float depth = texture( u_depth_texture, uv ).x;
-   	float lin_depth = texture( u_lin_depth_texture, uv ).x;
-	vec4 screen_pos = vec4(uv.x*2.0-1.0, uv.y*2.0-1.0, depth*2.0-1.0, 1.0);
-	vec4 proj_worldpos = u_inverse_viewprojection * screen_pos;
-	vec3 world_position = proj_worldpos.xyz / proj_worldpos.w;
+	float a_den = (o-f);
+//	if (a_den == 0)
+//		a_den += 0.0001;
+	float a = (o*f)/a_den;
+	
+	float b_den = (d-f);
+//	if (b_den == 0)
+//		b_den += 0.0001;
+	float b = (d*f)/b_den;
+	float c = (d-f)/(d*u_apperture*CoC);
 
-	float camera_dist = length(world_position - u_camera_position);
-	//float CoC_num = u_apperture * (u_focal_length * (u_plane_focus - depth));
-	//float CoC_den = depth * (u_plane_focus - u_focal_length);
-	//float CoC = abs(CoC_num / CoC_den);
-	float CoC = (lin_depth - u_focal_length) / u_focal_range;
+	float blur = clamp(abs(a-b)*c,0.0,1.0);
 
-	CoC = clamp(CoC, 0.0, 20);
-	//vec3 camera_dist = world_position - u_camera_position;
-
-	//vec3 offset_vec = camera_dist - u_focal_length;
-	//float offset = length(offset_vec);
-
-	vec4 sum = vec4(0.0);
-	for (int i = 0; i < CoC; i++){
-		float offset = (i/(CoC-1) - 0.5) * 1.0;
-		float deviation_squared = u_standard_deviation*u_standard_deviation;
-		float gauss = u_gaussian_comp * pow(E, -((offset*offset)/(2*deviation_squared)));
-		float sample_dist = i - floor(CoC/2);
-		sum += texture2D(u_texture, uv + offset * sample_dist) * gauss;
-		//sum += texture2D(u_texture, uv + u_offset * sample_dist) * gauss;
-	}
-
-	vec4 final_blur = sum;
-
-  	FragColor = color;
-  	//FragColor = vec4(CoC);
+	if (u_show_depth == 0)
+		FragColor = mix(colorA, colorB, blur);
+	else
+		FragColor = vec4(blur);
 }
 
 // ---------------------------------- Antialiasing ---------------------------------

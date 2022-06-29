@@ -330,7 +330,9 @@ void Application::renderDebugGUI(void)
 		ImGui::Checkbox("Lens distortion", &renderer->lens_distortion);
 		ImGui::Checkbox("Contrast", &renderer->contrast);
 		ImGui::Checkbox("Simple Glow", &renderer->simple_glow);
+		ImGui::Checkbox("Perfect Glow", &renderer->perfect_glow);
 		ImGui::Checkbox("Depth Of Field", &renderer->depth_field);
+		ImGui::Checkbox("Grain", &renderer->grain);
 		if (ImGui::TreeNode("PostFX Parameters")) {
 			ImGui::SliderFloat("Saturation Intensity", &renderer->saturation_intensity, 0.0, 3.0);
 			ImGui::SliderFloat("Vigneting Intensity", &renderer->vigneting_intensity, 0.0, 3.0);
@@ -338,9 +340,11 @@ void Application::renderDebugGUI(void)
 			ImGui::SliderFloat("Blur Factor Simple Glow ", &renderer->simglow_blur_factor, 0.0, 3.0);
 			ImGui::SliderFloat("Mix Factor Simple Glow", &renderer->simglow_mix_factor, 0.0, 3.0);
 			ImGui::SliderFloat("Threshold Simple Glow", &renderer->simglow_threshold, 0.0, 3.0);
-			//ImGui::SliderFloat("Apperture Depth Field", &renderer->apperture, 0.0, 3.0);
+			ImGui::SliderInt("Iterations Perfect Glow", &renderer->perfglow_iterations, 0.0, 6.0);
+			ImGui::SliderFloat("Apperture Depth Field", &renderer->apperture, 0.01, 3.0);
 			ImGui::SliderFloat("Focal Length Depth Field", &renderer->focal_length, 0.0, 3.0);
-			ImGui::SliderFloat("Focal Range Depth Field", &renderer->focal_range, 0.0, 3.0);
+			ImGui::SliderFloat("Focal Range Depth Field", &renderer->focal_range, 0.01, 3.0);
+			ImGui::Checkbox("Show depth of field", &renderer->show_depth_field);
 			//ImGui::SliderFloat("Plane Focus Depth Field", &renderer->plane_focus, 0.0, 3.0);
 			//ImGui::SliderFloat("Image Distance Depth Field", &renderer->image_distance, 0.0, 3.0);
 			ImGui::TreePop();
