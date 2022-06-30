@@ -714,7 +714,6 @@ void Renderer::renderMeshWithMaterial(Matrix44 model, Mesh* mesh, GTR::Material*
 		setMultipassParameters(material, shader, mesh);
 		shader->disable();
 	}
-	mesh->renderBounding(model, false);
 
 	if (irradiance && probes_texture)
 		computeIrradianceForward(mesh, model, material, camera, i);
