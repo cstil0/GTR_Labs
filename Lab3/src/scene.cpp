@@ -312,4 +312,5 @@ void GTR::DecalEntity::configure(cJSON* json)
 {
 	if (cJSON_GetObjectItem(json, "texture"))
 		texture = cJSON_GetObjectItem(json, "texture")->valuestring;
+		
 }

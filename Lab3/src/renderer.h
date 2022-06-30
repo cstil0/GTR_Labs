@@ -115,8 +115,6 @@ namespace GTR {
 		Texture* postFX_textureD;
 		Texture* randomTexture;
 
-
-		// debuging use -- borrar
 		Texture* irradiance_texture;
 		int width_shadowmap; 
 		int height_shadowmap;
@@ -167,9 +165,6 @@ namespace GTR {
 		Mesh cube;
 		Mesh* cone;
 
-		// skybox
-		//Texture* skybox;
-
 		// reflections
 		std::vector<sReflectionProbe*> reflection_probes;
 		FBO* reflection_fbo;
@@ -179,7 +174,6 @@ namespace GTR {
 		bool planar_reflection;
 		bool render_reflection_probes;
 		bool scene_reflection;
-		//ReflectionProbeEntity* reflection_probe;
 
 		// volumetric
 		bool volumetric;
@@ -226,14 +220,10 @@ namespace GTR {
 		Vector4 assignMapPiece(int width, int height, int index, int num_elements);
 		Vector4 assignMapPiece_shader(int width, int height, int index, int num_elements);
 		void generateShadowmap(LightEntity* light, int index);
-		void generateIrradianceProbes();
-		void showShadowmap(LightEntity* light);
-
-		void lineralizeDepth(Texture* depth, Vector2 camera_nearfar);
 
 		// -- Render functions --
 		
-		//renders several elements of the scene
+		//render several elements of the scene
 		void renderScene(GTR::Scene* scene, Camera* camera);
 		void renderSceneWithReflection(Camera* camera);
 		// to render the scene using rendercalls vector
@@ -251,14 +241,14 @@ namespace GTR {
 		void renderFlatMesh(const Matrix44 model, Mesh* mesh, GTR::Material* material, Camera* camera);
 		void renderForward(Camera* camera, FBO* fboToRender);
 		void renderDeferred(Camera* camera);
-
 		void renderSkybox(Camera* camera, Texture* skybox);
 
-		// -- Deferred functions
+		// -- Deferred functions --
 
+		void createFBOsDeferred();
 		void generateGBuffers(Camera* camera);
-		void generateSSAO(Camera* camera, Matrix44 inv_vp, int width, int height);
 		void applyIllumination_deferred(Camera* camera, Matrix44 inv_vp, int width, int height);
+		void renderDecals(Camera* camera, Matrix44 inv_vp);
 		void applyColorCorrection(Texture* final_texture);
 
 		// -- Upload to shader functions --
@@ -268,24 +258,33 @@ namespace GTR {
 		void setSinglepass_parameters(GTR::Material* material, Shader* shader, Mesh* mesh);
 		void setMultipassParameters(GTR::Material* material, Shader* shader, Mesh* mesh);
 
-		// -- Debug functions --
+		// -- SSAO functions --
 
-		void showGBuffers(int width, int height, Camera* camera);
-		void setLightsVisible();
-		void setLightsInvisible();
-		void renderInMenu();
-		
+		void generateSSAO(Camera* camera, Matrix44 inv_vp, int width, int height);
+
+		// -- Irradiance functions --
+
+		void generateIrradianceProbes();
 		void renderIrradianceProbe(Vector3 pos, float size, float* coeffs);
 		void captureIrradianceProbe(sProbe& probe);
 		void saveIrradianceProbesToDisk();
 		bool loadIrradianceProbesFromDisk();
 		void computeIrradianceDeferred(Matrix44 inv_vp);
 		void computeIrradianceForward(Mesh* mesh, Matrix44 model, Material* material, Camera* camera, int i);
-		
+
+		// -- Reflection functions --
+
+		void renderReflectionsDeferred(Camera* camera, Matrix44 inv_vp);
 		void generateReflectionProbes();
-		void generateReflectionProbesMesh();
 		void renderReflectionProbes(Camera* camera);
 		void captureReflectionProbe(Texture* tex, Vector3 pos);
+
+		// -- Volumetric functions --
+
+		void renderVolumetricDeferred(Camera* camera, Matrix44 inv_vp);
+
+		// -- PostFX functions --
+
 		Texture* applyAntialiasing(Shader* fxshader, Texture* draw_texture, Texture* read_texture);
 		Texture* applySaturation(Shader* fxshader, Texture* draw_texture, Texture* read_texture);
 		Texture* applyLensDistortion(Shader* fxshader, Texture* draw_texture, Texture* read_texture);
@@ -296,13 +295,17 @@ namespace GTR {
 		Texture* applyDepthField(Shader* fxshader, Camera* camera, Texture* draw_texture1, Texture* draw_texture2, Texture* draw_texture3, Texture* draw_texture4, Texture* read_texture, Texture* depth_texture);
 		Texture* applyGrain(Shader* fxshader, Camera* camera, Texture* draw_texture, Texture* read_texture);
 		Texture* applyMotionBlur(Shader* fxshader, Camera* camera, Texture* draw_texture, Texture* read_texture, Texture* depth_texture);
-		void saveReflectionProbesToDisk();
-		bool loadReflectionProbesFromDisk();
 
 		Texture* applyFX(Camera* camera, Texture* color_texture, Texture* depth_texture);
 
-		// FUERA
-		void reloadRenderer();
+		// -- Debug functions --
+
+		void showGBuffers(int width, int height, Camera* camera);
+		void setLightsVisible();
+		void setLightsInvisible();
+		void renderInMenu();
+
+		void lineralizeDepth(Texture* depth, Vector2 camera_nearfar);
 };
 
 	std::vector<Vector3> generateSpherePoints(int num, float radius, bool hemi);

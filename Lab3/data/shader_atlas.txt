@@ -5,6 +5,7 @@ multi_pass basic.vs light_multi_pass.fs
 single_pass basic.vs light_single_pass.fs
 gbuffers basic.vs gbuffers.fs
 deferred basic.vs deferred.fs
+deferred_directional quad.vs deferred_directional.fs
 deferred_ambient quad.vs deferred_ambient.fs
 pbr_multi basic.vs pbr_multi.fs
 deferred_pbr basic.vs deferred_pbr.fs
@@ -1125,7 +1126,128 @@ void main()
 	vec4 proj_worldpos = u_inverse_viewprojection * screen_pos;
 	LightComp.world_position = proj_worldpos.xyz / proj_worldpos.w;
 
-	LightComp.N = normalize(gb1_color.xyz * 2.0 - vec3(1.0)); // PASAMOS DE [0, 1] A [-1, 1]
+	LightComp.N = normalize(gb1_color.xyz * 2.0 - vec3(1.0));
+
+	vec4 color = vec4(gb0_color.xyz, 1.0);
+	float ao_factor = texture(u_ssao_texture, uv).x;
+
+	vec3 light = u_ambient_light;
+
+	vec3 light_color = u_light_color;
+	if (u_gamma == 1){
+		color.xyz = degamma(color.xyz);
+		light = degamma(light);
+		light_color = degamma(light_color);
+		gb2_color.xyz = degamma(gb2_color.xyz);
+	}
+
+	light *= ao_factor;
+
+	// Point
+	if (u_light_type == 1){
+		computeL_point(LightComp);
+	}
+
+	// Spot
+	else if (u_light_type == 2){
+		computeL_point(LightComp);
+		computeSpotFactor(LightComp);
+	}
+
+	// Directional
+	else if (u_light_type == 3){
+		computeL_directional(LightComp);
+	}
+
+	computeNdotL(LightComp);
+
+	if (u_light_cast_shadows == 1){
+		testShadowMap(LightComp);
+	}
+
+	computeAttenuation(LightComp);
+	light += light_color * LightComp.NdotL * LightComp.att_factor * LightComp.spot_factor * LightComp.shadow_factor;
+
+	// Apply other textures
+	// Emissive
+	if (u_emissive_flag == 1)
+		light += gb2_color.xyz;
+
+	// Occlusion
+	// Occlusion value is only in one coordinate
+	light *= gb2_color.w;
+
+	color.xyz *= light;
+
+	FragColor = color;
+}
+
+//-------------------------------- Deferred directional---------------------------------
+\deferred_directional.fs
+#version 330 core
+
+in vec2 v_uv;
+
+uniform vec3 u_camera_position;
+uniform vec4 u_color;
+uniform float u_time;
+uniform float u_alpha_cutoff;
+
+uniform vec2 u_camera_nearfar;
+
+uniform mat4 u_viewprojection;
+
+uniform mat4 u_inverse_viewprojection;
+uniform vec2 u_iRes;
+
+// Color correction
+uniform int u_gamma;
+
+out vec4 FragColor;
+
+#include gbuffer_texture_uniforms
+#include light_uniforms 
+#include normalmap_functions
+#include degamma
+#include light_functions_multi
+
+void main()
+{
+	LightComp = LightStruct(
+		vec3(0.0, 0.0, 0.0), //L
+		vec3(0.0, 0.0, 0.0), //D
+		vec3(0.0, 0.0, 0.0), //N
+		vec3(0.0, 0.0, 0.0), //V
+		vec3(0.0, 0.0, 0.0), //R
+		vec3(0.0, 0.0, 0.0), //H
+
+		vec3(0.0, 0.0, 0.0), //World pos
+
+		0.0, // NdotL
+		0.0, // LdotD
+		0.0, // NdotH
+		0.0, // NdotV
+		0.0, // LdotH
+
+		0.0, // light dist
+
+		1.0, // spot factor
+		1.0, // attenuation factor
+		1.0 // shadow_factor
+	);
+	
+	vec2 uv = v_uv;
+
+	vec4 gb0_color = texture(u_gb0_texture, uv); // Color + metalness
+	vec4 gb1_color = texture(u_gb1_texture, uv); // Normal + roughness
+	vec4 gb2_color = texture(u_gb2_texture, uv); // Emissive + occlusion
+	float depth = texture( u_depth_texture, uv ).x;
+
+	vec4 screen_pos = vec4(uv.x*2.0-1.0, uv.y*2.0-1.0, depth*2.0-1.0, 1.0);
+	vec4 proj_worldpos = u_inverse_viewprojection * screen_pos;
+	LightComp.world_position = proj_worldpos.xyz / proj_worldpos.w;
+
+	LightComp.N = normalize(gb1_color.xyz * 2.0 - vec3(1.0));
 
 	vec4 color = vec4(gb0_color.xyz, 1.0);
 	float ao_factor = texture(u_ssao_texture, uv).x;
@@ -1206,7 +1328,6 @@ vec3 gamma(vec3 c)
 void main(){
 	vec4 color = texture(u_screen_texture, v_uv);
 	vec3 rgb = color.xyz;
-	float depth = texture(u_depth_texture, v_uv).x;
 
 	if (u_tonemapping == 1){
 		float lum = dot(rgb, vec3(0.2126, 0.7152, 0.0722));
@@ -1216,14 +1337,11 @@ void main(){
 		rgb = max(rgb,vec3(0.001));
 	}
 
-	// Aplicamos gamma solo a los objetos sin transparencia (sobretodo para los vidrios) dejando un pequeño
-	// margen de 0.1 ya que el chasis del coche por ejemplo tiene un poco de transparencia pero queremos aplicarle gamma
-	if (u_gamma == 1 && color.w >= 0.9)
+	if (u_gamma == 1)
 		rgb = gamma(rgb);
 	
 	FragColor = vec4( rgb, color.a );
 }
-
 
 //----------------------------- PBR Multipass -------------------------------
 \pbr_multi.fs
@@ -1768,7 +1886,6 @@ out vec4 FragColor;
 void main()
 {
 	SH9Color sh;
-	// UN POCO CUTRE -- GUARDAMOS TODOS LOS COEFICIENTES EN LA ESTRUCTURA
 	sh.c[0] = u_coeffs[0];
 	sh.c[1] = u_coeffs[1];
 	sh.c[2] = u_coeffs[2];
@@ -1779,7 +1896,6 @@ void main()
 	sh.c[7] = u_coeffs[7];
 	sh.c[8] = u_coeffs[8];
 
-	// COGER DE LA TEXTURA
 	vec3 N = normalize(v_normal);
 	//now we can use the coefficients to compute the irradiance
 	vec3 irradiance = ComputeSHIrradiance( N, sh );
@@ -1834,9 +1950,6 @@ void main()
 	vec4 proj_worldpos = u_inverse_viewprojection * screen_pos;
 	vec3 world_position = proj_worldpos.xyz / proj_worldpos.w;
 
-	// CONVERTIMOS LA COORDENADA DE MUNDO DE WORLD SPACE A "GRID SPACE", Y UNA VEZ
-	// SABEMOS DONDE ESTÁ COLOCADO EL PUNTO DENTRO DE LA GRID, NOS CARGAMOS EL DECIMAL
-	// Y SABEMOS EXACTAMENTE EN QUE FILA Y COLUMNA ESTÁ. ASÍ PODEMOS SABER QUE PROBE ESTÁ MÁS CERCA
 	//computing nearest probe index based on world position
 	vec3 irr_range = u_irr_end - u_irr_start;
 	vec3 irr_local_pos = clamp( world_position - u_irr_start + N * u_irr_normal_distance, vec3(0.0), irr_range );  //offset a little
@@ -1856,7 +1969,6 @@ void main()
 	for(int i = 0; i < 9; ++i)
 	{
 	vec2 coeffs_uv = vec2( (float(i)+0.5) * d_uvx, row_uv );
-	// LEEMOS DE LA TEXTURA PROBES TEXTURE Y LLAMAMOS A LA FUNCIÓN COMPUTESHIRR
 	sh.c[i] = texture( u_irr_texture, coeffs_uv).xyz;
 	}
 	//now we can use the coefficients to compute the irradiance
@@ -1910,9 +2022,6 @@ void main()
 	if (u_normal_text_bool == 1)
 		N = perturbNormal(N, V, uv, normal_pixel);
 
-	// CONVERTIMOS LA COORDENADA DE MUNDO DE WORLD SPACE A "GRID SPACE", Y UNA VEZ
-	// SABEMOS DONDE ESTÁ COLOCADO EL PUNTO DENTRO DE LA GRID, NOS CARGAMOS EL DECIMAL
-	// Y SABEMOS EXACTAMENTE EN QUE FILA Y COLUMNA ESTÁ. ASÍ PODEMOS SABER QUE PROBE ESTÁ MÁS CERCA
 	//computing nearest probe index based on world position
 	vec3 irr_range = u_irr_end - u_irr_start;
 	vec3 irr_local_pos = clamp( world_position - u_irr_start + N * u_irr_normal_distance, vec3(0.0), irr_range );  //offset a little
@@ -1938,11 +2047,10 @@ void main()
 	for(int i = 0; i < 9; ++i)
 	{
 		coeffs_uv = vec2( (float(i)+0.5) * d_uvx, row_uv );
-		// LEEMOS DE LA TEXTURA PROBES TEXTURE Y LLAMAMOS A LA FUNCIÓN COMPUTESHIRR
 		sh.c[i] = texture( u_irr_texture, coeffs_uv).xyz;
 	}
 
-	//example for right bottom far index
+	// do trilinear interpolation taking the neighbours of each probe and interpolating them
 	// Right, Bottom, Far
 	vec3 indicesRBF = local_indices; // BLUEPRINT
 	indicesRBF += vec3(1.0); //from left to right
@@ -1956,7 +2064,6 @@ void main()
 	for(int i = 0; i < 9; ++i)
 	{
 		coeffs_uv = vec2( (float(i)+0.5) * d_uvx, row_uv );
-		// LEEMOS DE LA TEXTURA PROBES TEXTURE Y LLAMAMOS A LA FUNCIÓN COMPUTESHIRR
 		sh.c[i] = texture( u_irr_texture, coeffs_uv).xyz;
 	}
 
@@ -1975,7 +2082,6 @@ void main()
 	for(int i = 0; i < 9; ++i)
 	{
 		coeffs_uv = vec2( (float(i)+0.5) * d_uvx, row_uv );
-		// LEEMOS DE LA TEXTURA PROBES TEXTURE Y LLAMAMOS A LA FUNCIÓN COMPUTESHIRR
 		sh.c[i] = texture( u_irr_texture, coeffs_uv).xyz;
 	}
 
@@ -1994,7 +2100,6 @@ void main()
 	for(int i = 0; i < 9; ++i)
 	{
 		coeffs_uv = vec2( (float(i)+0.5) * d_uvx, row_uv );
-		// LEEMOS DE LA TEXTURA PROBES TEXTURE Y LLAMAMOS A LA FUNCIÓN COMPUTESHIRR
 		sh.c[i] = texture( u_irr_texture, coeffs_uv).xyz;
 	}
 
@@ -2013,7 +2118,6 @@ void main()
 	for(int i = 0; i < 9; ++i)
 	{
 		coeffs_uv = vec2( (float(i)+0.5) * d_uvx, row_uv );
-		// LEEMOS DE LA TEXTURA PROBES TEXTURE Y LLAMAMOS A LA FUNCIÓN COMPUTESHIRR
 		sh.c[i] = texture( u_irr_texture, coeffs_uv).xyz;
 	}
 
@@ -2032,7 +2136,6 @@ void main()
 	for(int i = 0; i < 9; ++i)
 	{
 		coeffs_uv = vec2( (float(i)+0.5) * d_uvx, row_uv );
-		// LEEMOS DE LA TEXTURA PROBES TEXTURE Y LLAMAMOS A LA FUNCIÓN COMPUTESHIRR
 		sh.c[i] = texture( u_irr_texture, coeffs_uv).xyz;
 	}
 
@@ -2051,7 +2154,6 @@ void main()
 	for(int i = 0; i < 9; ++i)
 	{
 		coeffs_uv = vec2( (float(i)+0.5) * d_uvx, row_uv );
-		// LEEMOS DE LA TEXTURA PROBES TEXTURE Y LLAMAMOS A LA FUNCIÓN COMPUTESHIRR
 		sh.c[i] = texture( u_irr_texture, coeffs_uv).xyz;
 	}
 
@@ -2070,7 +2172,6 @@ void main()
 	for(int i = 0; i < 9; ++i)
 	{
 		coeffs_uv = vec2( (float(i)+0.5) * d_uvx, row_uv );
-		// LEEMOS DE LA TEXTURA PROBES TEXTURE Y LLAMAMOS A LA FUNCIÓN COMPUTESHIRR
 		sh.c[i] = texture( u_irr_texture, coeffs_uv).xyz;
 	}
 
@@ -2089,7 +2190,6 @@ void main()
 	for(int i = 0; i < 9; ++i)
 	{
 		coeffs_uv = vec2( (float(i)+0.5) * d_uvx, row_uv );
-		// LEEMOS DE LA TEXTURA PROBES TEXTURE Y LLAMAMOS A LA FUNCIÓN COMPUTESHIRR
 		sh.c[i] = texture( u_irr_texture, coeffs_uv).xyz;
 	}
 
@@ -2245,8 +2345,11 @@ void main()
 	vec3 color = vec3(0.0);
 
 	vec3 light_color = u_light_color;
+	if (u_gamma == 1)
+		light_color = degamma(light_color);
 	vec3 light = vec3(0.0);
 
+	// throw ray from camera position and iterate for each step dist
 	vec3 ray_start = u_camera_position;
 	vec3 ray_dir = world_position - ray_start;
 	float ray_length = length(ray_dir);
@@ -2254,12 +2357,10 @@ void main()
 	ray_length = min(500.0, ray_length);
 
 	float step_dist = ray_length / float(SAMPLES);
-	// LIMITAMOS EL STEP DIST
 	vec3 current_pos = ray_start;
 	vec3 ray_offset = ray_dir * step_dist;
 
 	//how visible is the point at the end of the ray
-	// ESTE TRANSPARENCY IRÁ ITERANDO PARA SABER EL ALPHA UNA VEZ RECORRIDO TODO EL RAYO
 	float transparency = 1.0;
 	vec3 irradiance = vec3(0.0);
 
@@ -2274,7 +2375,7 @@ void main()
 		//accumulate the amount of light
 		irradiance += light * transparency * (u_air_density * step_dist);
 
-		//reduce visibility -- AIR DENSITY Y STEP SON PROPORCIONALES: CUANTO MÁS AVANZAMOS MÁS AIRE HAY DE POR MEDIO
+		//reduce visibility -- the more density, the more aire in between
 		transparency -= u_air_density * step_dist;
 
 		//too dense, nothing can be seen behind
@@ -2284,7 +2385,6 @@ void main()
 		//advance to next position
 		current_pos.xyz += ray_offset;
 	}
-
 
 	FragColor = vec4(irradiance, 1.0 - transparency);
 
@@ -2306,8 +2406,10 @@ uniform mat4 u_inverse_viewprojection;
 uniform vec2 u_iRes;
 uniform float u_air_density;
 
-#include light_uniforms
+uniform int u_gamma;
 
+#include light_uniforms
+#include degamma
 
 out vec4 FragColor;
 
@@ -2361,6 +2463,10 @@ void main()
 	vec4 proj_worldpos = u_inverse_viewprojection * screen_pos;
 	vec3 world_position = proj_worldpos.xyz / proj_worldpos.w;
 
+	vec3 light_color = u_light_color;
+	if (u_gamma == 1)
+		light_color = degamma(light_color);
+
 	vec3 color = vec3(0.0);
 
 	vec3 ray_start = u_camera_position;
@@ -2370,12 +2476,10 @@ void main()
 	ray_length = min(500.0, ray_length);
 
 	float step_dist = ray_length / float(SAMPLES);
-	// LIMITAMOS EL STEP DIST
 	vec3 current_pos = ray_start;
 	vec3 ray_offset = ray_dir * step_dist;
 
 	//how visible is the point at the end of the ray
-	// ESTE TRANSPARENCY IRÁ ITERANDO PARA SABER EL ALPHA UNA VEZ RECORRIDO TODO EL RAYO
 	float transparency = 1.0;
 	vec3 irradiance = vec3(0.0);
 
@@ -2406,12 +2510,11 @@ void main()
 		//evaluate contribution
 		//compute illumination in this point
 		float shadow = testShadowMap(current_pos);
-		vec3 light = u_light_color * shadow * spot_factor;
+		vec3 light = light_color * shadow * spot_factor;
 
 		//accumulate the amount of light
 		irradiance += light * transparency * (u_air_density * step_dist);
 
-		//reduce visibility -- AIR DENSITY Y STEP SON PROPORCIONALES: CUANTO MÁS AVANZAMOS MÁS AIRE HAY DE POR MEDIO
 		transparency -= u_air_density * step_dist;
 
 		//too dense, nothing can be seen behind
@@ -2457,11 +2560,10 @@ void main()
 	vec4 proj_worldpos = u_inverse_viewprojection * screen_pos;
 	vec3 world_position = proj_worldpos.xyz / proj_worldpos.w;
 
-	// COGEMOS LA COORDENADA LOCAL A PARTIR DE LA DE MUNDO CON LA INVERSA DE LA MODEL
+	// take local pos from world
 	vec3 local_pos = (u_imodel * vec4(world_position, 1.0)).xyz;
 
-	// MIRAMOS SI ESTÁ DENTRO DE LO QUE NOS INTERESA .DE ESTA FORMA, SOLO PINTAMOS LA PARTE DEL CUBO QUE TOCA CON EL OBJETO Y PARECE QUE SE PEGUE
-	// ESTO ES ASI POR QUE EL CUBO VA DE -1 A 1 EN TODAS LAS COORDENADAS.
+	// see if is inside the cube to render only the interest part
 	if (local_pos.x < -1.0 || local_pos.x > 1.0 ||
 		local_pos.y < -1.0 || local_pos.y > 1.0 ||
 		local_pos.z < -1.0 || local_pos.z > 1.0 )
@@ -2491,8 +2593,6 @@ void main()
 	vec3 V = v_world_position - u_camera_pos;
 	vec3 N = normalize(v_normal);
 	vec3 R = reflect(V, N);
-	// TEXTURE LOD HACE QUE EL MITMMAP QUE SE USE SEA SIEMPRE EL MISMO Y NO SE BAJE EN FUNCIÓN DE LA DISTANCIA
-	// Y EL NUMERO DEL FINAL ES EL MITMAP EN EL QUE ESTAMOS. CUANTO MÁS ALTO MÁS BLURREADO ESTARÁ -- BAJAMOS DE MITMAO 
 	FragColor = textureLod(u_texture, R, 1.0);
 }
 
@@ -2551,7 +2651,7 @@ out vec4 FragColor;
 void main(){
 	vec2 uv = v_uv;
 	vec4 color = texture(u_texture, uv);
-	// LOS QUE ESTÉN POR DEBAJO DE 0.5 SERÁN MÁS PEQUEÑOS Y LOS QUE ESTÉN POR ENCIMA MÁS GRANDES
+	// the ones below will be smaller and the ones above will get bigger
 	color.xyz = (color.xyz - vec3(0.5)) * u_intensity + vec3(0.5);
 
 	FragColor = color;
@@ -2716,15 +2816,14 @@ void main() {
 	float d = u_focal_range*1000.0; // focal plane in mm,
 	float o = depth*1000.0; // depth in mm,
 
-	float a_den = (o-f);
-	float a = (o*f)/a_den;
-	
-	float b_den = (d-f);
-	float b = (d*f)/b_den;
+	// compute depth of field;
+	float a = (o*f)/(o-f);
+	float b = (d*f)/(d-f);
 	float c = (d-f)/(d*u_apperture*CoC);
 
 	float blur = clamp(abs(a-b)*c,0.0,1.0);
 
+	// interpolate taking into acount the blur factor
 	if (u_show_depth == 0)
 		FragColor = mix(colorA, colorB, blur);
 	else
