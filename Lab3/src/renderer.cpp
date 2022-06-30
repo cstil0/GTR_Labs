@@ -86,9 +86,6 @@ GTR::Renderer::Renderer()
 	cone = Mesh::Get("data/meshes/cone.obj", false, false);
 	cube.createCube();
 
-	// skybox
-	//skybox = CubemapFromHDRE("data/night.hdre");
-
 	// irradiance
 	irradiance = false;
 	show_irradiance = false;
@@ -96,13 +93,10 @@ GTR::Renderer::Renderer()
 	// reflections
 	reflection_probe_fbo = NULL;
 	reflection_fbo = NULL;
-	//reflection_fbo->create(Application::instance->window_width, Application::instance->window_height, 1, GL_RGBA, GL_FLOAT, true);
 	is_rendering_reflections = false;
 	planar_reflection = false;
 	render_reflection_probes = false;
 	scene_reflection = false;
-	//reflection_probe = NULL;
-	//generateProbes(Scene::instance);
 
 	// volumetric
 	volumetric = false;
@@ -129,14 +123,9 @@ GTR::Renderer::Renderer()
 	focal_range = 0.043;
 	show_depth_field = false;
 	grainIntensity = 0.3;
-	//plane_focus = 1.0;
-	//image_distance = 1.0;
-
-	// decals
 }
 
-// LO BUENO QUE TIENE EL BLOQUE DE MEMORIA DE LAS PROBES ES QUE LAS TENEMOS TODAS COLINDANTES, DE FORMA QUE PARA EVITAR GENERARLAS CADA VEZ
-// PODEMOS GUARDARLAS COMO BINARIO EN EL DISCO Y RECUPERARLAS FACILMENTE
+// to generate irradiance probes
 void Renderer::generateIrradianceProbes(){
 	irradiance_probes.clear();
 	glClearColor(0.0, 0.0, 0.0, 1.0);
@@ -158,10 +147,6 @@ void Renderer::generateIrradianceProbes(){
 
 	//lets compute the centers
 	//pay attention at the order at which we add them
-
-	//int x = -80;
-	//int y = 50;
-	//int z = 13;
 	for (int z = 0; z < dim_irr.z; ++z)
 	{
 		for (int y = 0; y < dim_irr.y; ++y)
@@ -186,15 +171,11 @@ void Renderer::generateIrradianceProbes(){
 	{
 		int probe_index = iP;
 		captureIrradianceProbe(irradiance_probes[iP]);
-		// EL CARACTER \R HACE QUE VUELVA AL PRINCIPIO, EN LUGAR DE VOLVER A PRINTAR TODA LA LINEA ABAJO
 		std::cout << "Generating probes: " << iP << "/" << irradiance_probes.size() << "\r";
 	}
 	std::cout << std::endl;
 	std::cout << "DONE" << std::endl;
 
-	//create the texture to store the probes (do this ONCE!!!)
-	// SI NO ES NULO ELIMINAMOS LA TEXTURA Y LA VOLVEMOS A CREAR PARA PODER CAMBIAR EL TAMAÑO SI VAMOS A AÑADIR MÁS PROBES
-	// DE ESTA FORMA PODRÍAMOS EDITAR EL NUMERO DESDE EL EDITOR
 	if(probes_texture != NULL)
 		delete probes_texture;
 
@@ -207,7 +188,7 @@ void Renderer::generateIrradianceProbes(){
 	//SH are 27 floats in the RGB, RGB, ... order, we can create an array of
 	//SphericalHarmonics and use it as pixels of the texture
 	SphericalHarmonics* sh_data = NULL;
-	// ESTO ES UN ARRAY DE LOS 9 COEFICIENTES DE CADA PROBE QUE MIDE ANCHO POR ALTO POR PROFUNDIDAD
+
 	sh_data = new SphericalHarmonics[dim_irr.x * dim_irr.y * dim_irr.z];
 	//here we fill the data of the array with our probes in x,y,z order
 	for (int i = 0; i < irradiance_probes.size(); ++i)
@@ -221,10 +202,6 @@ void Renderer::generateIrradianceProbes(){
 	//always free memory after allocating it!!!
 	delete[] sh_data;
 	probes_texture->unbind();
-
-
-	//probe.sh.coeffs[0].set(1, 0, 0);
-
 }
 
 // --- Rendercalls manager functions ---
@@ -279,7 +256,6 @@ void GTR::Renderer::addRenderCall_node(Camera* camera, Node* node, Matrix44 curr
 		}
 		render_calls.push_back(rc);
 	}
-
 
 	// Add also all the childrens of this node
 	for (int j = 0; j < node->children.size(); ++j) {
@@ -597,9 +573,12 @@ void Renderer::renderScene_RenderCalls(Camera* camera, FBO* fboToRender) {
 	else
 		renderDeferred(camera);
 
-	if (show_shadowmap && shadowmap)
-		showShadowmap(lights[debug_shadowmap]);
-
+	if (show_shadowmap && shadowmap) {
+		glViewport(0, 0, 256, 256);
+		shadowmap->toViewport();
+		//showShadowmap(lights[debug_shadowmap]);
+		glViewport(0, 0, Application::instance->window_width, Application::instance->window_height);
+	}
 	if (show_probes_texture && probes_texture)
 		probes_texture->toViewport();
 
@@ -2401,7 +2380,7 @@ void GTR::Renderer::generateReflectionProbes() {
 			Vector3 center = currentEntity->prefab->bounding.center;
 			Vector3 centerWorld = currentEntity->model * center;
 			Vector3 halfSize = currentEntity->prefab->bounding.halfsize;
-			float rot_angle = currentEntity->angle + 40;
+			float rot_angle = currentEntity->angle;
 			Matrix44 rot_matrix = Matrix44();
 
 			rot_matrix.m[0] = cos(rot_angle*DEG2RAD); rot_matrix.m[4] = 0; rot_matrix.m[8] = sin(rot_angle * DEG2RAD); rot_matrix.m[12] = 0;
@@ -2415,8 +2394,8 @@ void GTR::Renderer::generateReflectionProbes() {
 			//float posY = centerWorld.y + halfSize.y + p1->size;
 			float posY = center.y + halfSize.y + p1->size;
 			Vector3 pos1 = Vector3(center.x, posY, center.z);
-			pos1 = rot_matrix * pos1;
 			pos1 = currentEntity->model * pos1;
+			pos1 = rot_matrix * pos1;
 			p1->pos.set(pos1.x, pos1.y, pos1.z);
 			//p1->pos.set(centerWorld.x, posY, centerWorld.z);
 			//p1->pos = rot_matrix * p1->pos;
@@ -2431,8 +2410,8 @@ void GTR::Renderer::generateReflectionProbes() {
 			sReflectionProbe* p2 = new sReflectionProbe();
 			float posX = center.x + halfSize.x + p2->size;
 			Vector3 pos2 = Vector3(posX, center.y, center.z);
-			pos2 = rot_matrix * pos2;
 			pos2 = currentEntity->model * pos2;
+			pos2 = rot_matrix * pos2;
 			p2->pos.set(pos2.x, pos2.y, pos2.z);
 			//p2->pos = rot_matrix * p2->pos;
 
@@ -2445,8 +2424,8 @@ void GTR::Renderer::generateReflectionProbes() {
 			sReflectionProbe* p3 = new sReflectionProbe();
 			float posX_n = center.x - (halfSize.y + p3->size);
 			Vector3 pos3 = Vector3(posX_n, center.y, center.z);
-			pos3 = rot_matrix * pos3;
 			pos3 = currentEntity->model * pos3;
+			pos3 = rot_matrix * pos3;
 			p3->pos.set(pos3.x, pos3.y, pos3.z);
 			//p3->pos.set(posX_n, centerWorld.y, centerWorld.z);
 			//p3->pos = rot_matrix * p3->pos;
@@ -2460,8 +2439,8 @@ void GTR::Renderer::generateReflectionProbes() {
 			sReflectionProbe* p4 = new sReflectionProbe();
 			float posZ = center.z + halfSize.z + p4->size;
 			Vector3 pos4 = Vector3(center.x, center.y, posZ);
-			pos4 = rot_matrix * pos4;
 			pos4 = currentEntity->model * pos4;
+			pos4 = rot_matrix * pos4;
 			p4->pos.set(pos4.x, pos4.y, pos4.z);
 			//p4->pos.set(center.x, center.y, posZ);
 			//p4->pos = rot_matrix * p4->pos;
@@ -2475,8 +2454,8 @@ void GTR::Renderer::generateReflectionProbes() {
 			sReflectionProbe* p5 = new sReflectionProbe();
 			float posZ_n = center.z - (halfSize.z + p5->size);
 			Vector3 pos5 = Vector3(center.x, center.y, posZ_n);
-			pos5 = rot_matrix * pos5;
 			pos5 = currentEntity->model * pos5;
+			pos5 = rot_matrix * pos5;
 			p5->pos.set(pos5.x, pos5.y, pos5.z);
 
 			//p5->pos.set(centerWorld.x, centerWorld.y, posZ_n);
