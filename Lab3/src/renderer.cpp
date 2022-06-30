@@ -405,26 +405,22 @@ void GTR::Renderer::generateShadowmap(LightEntity* light, int index)
 	glEnable(GL_DEPTH_TEST);
 }
 
-// to show the shadowmap for debugging purposes
-void Renderer::showShadowmap(LightEntity* light) {
-	if (!shadowmap)
-		return;
-
-	lineralizeDepth(shadowmap, Vector2(light->light_camera->near_plane, light->light_camera->far_plane));
-
-	//Shader* depth_shader = Shader::getDefaultShader("depth");
-	//depth_shader->enable();
-	//// set uniforms to delinearize shadowmap texture
-	//depth_shader->setUniform("u_camera_nearfar", Vector2(light->light_camera->near_plane, light->light_camera->far_plane));
-	glViewport(0, 0, 256, 256);
-
-	linear_depth_fbo->color_textures[0]->toViewport();
-	//shadowmap->toViewport(depth_shader);
-
-	// return to default
-	glViewport(0, 0, Application::instance->window_width, Application::instance->window_height);
-	glEnable(GL_DEPTH_TEST);
-}
+//// to show the shadowmap for debugging purposes
+//void Renderer::showShadowmap(LightEntity* light) {
+//	if (!shadowmap)
+//		return;
+//
+//	lineralizeDepth(shadowmap, Vector2(light->light_camera->near_plane, light->light_camera->far_plane));
+//
+//	glViewport(0, 0, 256, 256);
+//
+//	linear_depth_fbo->color_textures[0]->toViewport();
+//	//shadowmap->toViewport(depth_shader);
+//
+//	// return to default
+//	glViewport(0, 0, Application::instance->window_width, Application::instance->window_height);
+//	glEnable(GL_DEPTH_TEST);
+//}
 
 void Renderer::lineralizeDepth(Texture* depth, Vector2 camera_nearfar) {
 	if (!linear_depth_fbo) {
@@ -442,9 +438,6 @@ void Renderer::lineralizeDepth(Texture* depth, Vector2 camera_nearfar) {
 	// set uniforms to delinearize shadowmap texture
 	depth_shader->setUniform("u_camera_nearfar", camera_nearfar);
 
-	//Texture* lin_depth = new Texture(Application::instance->window_width, Application::instance->window_height, GL_RGB, GL_FLOAT);;
-	
-	//FBO* fbo = Texture::getGlobalFBO(lin_depth);
 	linear_depth_fbo->bind();
 	depth->toViewport(depth_shader);
 	linear_depth_fbo->unbind();
@@ -481,11 +474,9 @@ void Renderer::renderScene(GTR::Scene* scene, Camera* camera)
 	}
 }
 
+// to render the inverted scene to render planar reflections
 void Renderer::renderSceneWithReflection(Camera* camera) {
-	//Scene* scene = Scene::instance;
-	//reflection_fbo->bind();
-
-	// ESTA CAMARA VA A ESTAR EN LA POSICIÓN OPUESTA-- ES EXACTAMENTE LO MISMO PERO CON LA Y INVERTIDA
+	// create a camera that is a flipped version of the original one to invert the scene
 	Camera flipped_camera;
 	flipped_camera.lookAt(camera->eye * Vector3(1, -1, 1), camera->center * Vector3(1, -1, 1), Vector3(0, -1, 0));
 	flipped_camera.setPerspective(camera->fov, camera->aspect, camera->near_plane, camera->far_plane);
@@ -493,16 +484,10 @@ void Renderer::renderSceneWithReflection(Camera* camera) {
 
 	is_rendering_planar_reflections = true;
 	renderScene_RenderCalls(&flipped_camera, reflection_fbo);
-	//screen_fbo->unbind();
-	//reflection_fbo->unbind();
 	is_rendering_planar_reflections = false;
 
 	camera->enable();
 	renderScene_RenderCalls(camera, screen_fbo);
-	// NO SE POR QUE PERO NO FUNCIONA
-	//screen_texture->toViewport();
-
-	//reflection_fbo->color_textures[0]->toViewport();
 }
 
 // To render the scene according to the rendercalls vector
@@ -528,8 +513,6 @@ void Renderer::renderScene_RenderCalls(Camera* camera, FBO* fboToRender) {
 			LightEntity* light = (LightEntity*)ent;
 			if (light->visible) {
 				lights.push_back(light);
-				//if (light->light_type == GTR::LightEntity::eTypeOfLight::SPOT)
-				//	direct_light = light;
 				if (light->cast_shadows) {
 					light->shadow_i = num_lights_shadows;
 					num_lights_shadows += 1;
@@ -547,7 +530,6 @@ void Renderer::renderScene_RenderCalls(Camera* camera, FBO* fboToRender) {
 
 	// Generate shadowmaps
 	// to know if it is the first light casting shadows and therefore clear the depthbuffer of the fbo
-	//int lshadow_i = 0;
 	for (int i = 0; i < lights.size(); i++) {
 		if (!shadow_flag)
 			continue;
@@ -556,7 +538,6 @@ void Renderer::renderScene_RenderCalls(Camera* camera, FBO* fboToRender) {
 		if (light->cast_shadows) {
 			if (camera->testSphereInFrustum(light->model.getTranslation(), light->max_distance)) {
 				generateShadowmap(light, light->shadow_i);
-				//lshadow_i += 1;
 			}
 		}
 	}
@@ -577,7 +558,6 @@ void Renderer::renderScene_RenderCalls(Camera* camera, FBO* fboToRender) {
 	if (show_shadowmap && shadowmap) {
 		glViewport(0, 0, 256, 256);
 		shadowmap->toViewport();
-		//showShadowmap(lights[debug_shadowmap]);
 		glViewport(0, 0, Application::instance->window_width, Application::instance->window_height);
 	}
 	if (show_probes_texture && probes_texture)
@@ -950,10 +930,6 @@ void GTR::Renderer::renderForward(Camera* camera, FBO* fboToRender = NULL)
 
 	if (typeOfRender == eRenderPipeline::MULTIPASS) {
 		// take the texture from the fbo and store it in another variable
-		// TO KNOW WHICH FBO IS BINDED
-		//GLint drawFboId = 0, readFboId = 0;
-		//glGetIntegerv(GL_DRAW_FRAMEBUFFER_BINDING, &drawFboId);
-		//glGetIntegerv(GL_READ_FRAMEBUFFER_BINDING, &readFboId);
 		screen_texture = screen_fbo->color_textures[0];
 
 	}
@@ -984,9 +960,6 @@ void GTR::Renderer::renderForward(Camera* camera, FBO* fboToRender = NULL)
 		}
 	}
 
-	// TAMAÑO 1 UNIDAD
-	// LE PASAMOS SOLO EL PRIMER COEFICIENTE// 
-	// .v ES PARA COGER UN PUNTERO AL PRIMER COEFICIENTE
 	if (show_probes) {
 		for (int i = 0; i < irradiance_probes.size(); ++i)
 			renderIrradianceProbe(irradiance_probes[i].pos, 2, irradiance_probes[i].sh.coeffs[0].v);
@@ -1087,7 +1060,6 @@ void GTR::Renderer::renderDeferred(Camera* camera)
 	if (!postFX_textureD)
 		postFX_textureD = new Texture(width, height, GL_RGB, GL_FLOAT);
 
-	// DICE QUE TAMBIÉN PODRÍAMOS CLONAR LAS TEXTURAS DEL GBUFFERS PARA NO TENER QUE CREAR OTRO FBO
 	if (!decals_fbo) {
 		decals_fbo = new FBO();
 
@@ -1102,7 +1074,6 @@ void GTR::Renderer::renderDeferred(Camera* camera)
 
 	// decals
 	if (decals.size()) {
-		// SI QUEREMOS MODIFICAR EL DEPTH BUFFER TAMBIÉN TENDRÍAMOS QUE CLONARLO
 		gbuffers_fbo->color_textures[0]->copyTo(decals_fbo->color_textures[0]);
 		gbuffers_fbo->color_textures[1]->copyTo(decals_fbo->color_textures[1]);
 		gbuffers_fbo->color_textures[2]->copyTo(decals_fbo->color_textures[2]);
@@ -1110,8 +1081,7 @@ void GTR::Renderer::renderDeferred(Camera* camera)
 		decals_fbo->bind();
 		gbuffers_fbo->depth_texture->copyTo(NULL);
 		decals_fbo->unbind();
-
-		// AHORA QUEREMOS VOLVER A PINTAR EN LOS GBUFFERS MIENTRAS LEEMOS DEL DECALS 
+		
 		gbuffers_fbo->bind();
 
 		Shader* decal_shader = Shader::Get("decal");
