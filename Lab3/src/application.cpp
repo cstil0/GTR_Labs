@@ -298,18 +298,20 @@ void Application::renderDebugGUI(void)
 		ImGui::SliderFloat("Scale", &renderer->scale, 0.01, 10);
 		ImGui::TreePop();
 	}
-	if (ImGui::TreeNode("Irradiance")) {
-		ImGui::Checkbox("Irradiance", &renderer->irradiance);
-		ImGui::Checkbox("Show irradiance", &renderer->show_irradiance);
-		ImGui::Checkbox("Show probes", &renderer->show_probes);
-		ImGui::Checkbox("Show probes texture", &renderer->show_probes_texture);
-		if (ImGui::Button("Generate probes"))
-			renderer->generateIrradianceProbes();
-		if (ImGui::Button("Save probes to disk"))
-			renderer->saveIrradianceProbesToDisk();
-		if (ImGui::Button("Load probes from disk"))
-			renderer->loadIrradianceProbesFromDisk();
-		ImGui::TreePop();
+	if (renderer->pipeline == GTR::Renderer::ePipeline::FORWARD) {
+		if (ImGui::TreeNode("Irradiance")) {
+			ImGui::Checkbox("Irradiance", &renderer->irradiance);
+			ImGui::Checkbox("Show irradiance", &renderer->show_irradiance);
+			ImGui::Checkbox("Show probes", &renderer->show_probes);
+			ImGui::Checkbox("Show probes texture", &renderer->show_probes_texture);
+			if (ImGui::Button("Generate probes"))
+				renderer->generateIrradianceProbes();
+			if (ImGui::Button("Save probes to disk"))
+				renderer->saveIrradianceProbesToDisk();
+			if (ImGui::Button("Load probes from disk"))
+				renderer->loadIrradianceProbesFromDisk();
+			ImGui::TreePop();
+		}
 	}
 	if (ImGui::TreeNode("Reflections")) {
 		ImGui::Checkbox("Planar reflection", &renderer->planar_reflection);
@@ -319,39 +321,76 @@ void Application::renderDebugGUI(void)
 			renderer->generateReflectionProbes();
 		ImGui::TreePop();
 	}
-	if (ImGui::TreeNode("Volumetric Rendering")) {
-		ImGui::Checkbox("Volumetric", &renderer->volumetric);
-		ImGui::SliderFloat("Air Density", &scene->air_density, 0.0, 10);
-		ImGui::TreePop();
-	}
-	if (ImGui::TreeNode("PostFX")) {
-		ImGui::Checkbox("Antialiasing", &renderer->antialiasing);
-		ImGui::Checkbox("Greyscale", &renderer->saturation);
-		ImGui::Checkbox("Lens distortion", &renderer->lens_distortion);
-		ImGui::Checkbox("Contrast", &renderer->contrast);
-		ImGui::Checkbox("Simple Glow", &renderer->simple_glow);
-		ImGui::Checkbox("Perfect Glow", &renderer->perfect_glow);
-		ImGui::Checkbox("Depth Of Field", &renderer->depth_field);
-		ImGui::Checkbox("Grain", &renderer->grain);
-		ImGui::Checkbox("Motion Blur", &renderer->motionBlur);
-		if (ImGui::TreeNode("PostFX Parameters")) {
-			ImGui::SliderFloat("Saturation Intensity", &renderer->saturation_intensity, 0.0, 3.0);
-			ImGui::SliderFloat("Vigneting Intensity", &renderer->vigneting_intensity, 0.0, 3.0);
-			ImGui::SliderFloat("Contrast Intensity", &renderer->contrast_intensity, 0.0, 3.0);
-			ImGui::SliderFloat("Blur Factor Simple Glow ", &renderer->simglow_blur_factor, 0.0, 3.0);
-			ImGui::SliderFloat("Mix Factor Simple Glow", &renderer->simglow_mix_factor, 0.0, 3.0);
-			ImGui::SliderFloat("Threshold Simple Glow", &renderer->simglow_threshold, 0.0, 3.0);
-			ImGui::SliderInt("Iterations Perfect Glow", &renderer->perfglow_iterations, 0.0, 6.0);
-			ImGui::SliderFloat("Apperture Depth Field", &renderer->apperture, 0.01, 3.0);
-			ImGui::SliderFloat("Focal Length Depth Field", &renderer->focal_length, 0.0, 3.0);
-			ImGui::SliderFloat("Focal Range Depth Field", &renderer->focal_range, 0.01, 3.0);
-			ImGui::Checkbox("Show depth of field", &renderer->show_depth_field);
-			ImGui::SliderFloat("Grain Intensiry", &renderer->grainIntensity, 0.01, 1.0);
-			//ImGui::SliderFloat("Plane Focus Depth Field", &renderer->plane_focus, 0.0, 3.0);
-			//ImGui::SliderFloat("Image Distance Depth Field", &renderer->image_distance, 0.0, 3.0);
+	if (renderer->pipeline == GTR::Renderer::ePipeline::DEFERRED) {
+		if (ImGui::TreeNode("Volumetric Rendering")) {
+			ImGui::Checkbox("Volumetric", &renderer->volumetric);
+			ImGui::SliderFloat("Air Density", &scene->air_density, 0.0, 10);
 			ImGui::TreePop();
 		}
-		ImGui::TreePop();
+	}
+	if (renderer->pipeline == GTR::Renderer::ePipeline::DEFERRED) {
+		if (ImGui::TreeNode("PostFX")) {
+			if (ImGui::TreeNode("Antialiasing")) {
+				ImGui::Checkbox("Antialiasing", &renderer->antialiasing);
+				ImGui::TreePop();
+			}
+			if (ImGui::TreeNode("Greyscale")) {
+				ImGui::Checkbox("Greyscale", &renderer->saturation);
+				ImGui::SliderFloat("Saturation Intensity", &renderer->saturation_intensity, 0.0, 3.0);
+				ImGui::SliderFloat("Vigneting Intensity", &renderer->vigneting_intensity, 0.0, 3.0);
+				ImGui::TreePop();
+			}
+
+			if (ImGui::TreeNode("Contrast")) {
+				ImGui::Checkbox("Contrast", &renderer->contrast);
+				ImGui::SliderFloat("Contrast Intensity", &renderer->contrast_intensity, 0.0, 3.0);
+				ImGui::TreePop();
+			}
+
+			if (ImGui::TreeNode("Lens distortion")) {
+				ImGui::Checkbox("Lens distortion", &renderer->lens_distortion);
+				ImGui::TreePop();
+			}
+
+			if (ImGui::TreeNode("Simple Glow")) {
+				ImGui::Checkbox("Simple Glow", &renderer->simple_glow);
+				ImGui::SliderFloat("Blur Factor Simple Glow ", &renderer->simglow_blur_factor, 0.0, 3.0);
+				ImGui::SliderFloat("Mix Factor Simple Glow", &renderer->simglow_mix_factor, 0.0, 3.0);
+				ImGui::SliderFloat("Threshold Simple Glow", &renderer->simglow_threshold, 0.0, 3.0);
+				ImGui::TreePop();
+			}
+
+			if (ImGui::TreeNode("Perfect Glow")) {
+				ImGui::Checkbox("Perfect Glow", &renderer->perfect_glow);
+				ImGui::SliderFloat("Blur Factor Simple Glow ", &renderer->simglow_blur_factor, 0.0, 3.0);
+				ImGui::SliderFloat("Mix Factor Simple Glow", &renderer->simglow_mix_factor, 0.0, 3.0);
+				ImGui::SliderFloat("Threshold Simple Glow", &renderer->simglow_threshold, 0.0, 3.0);
+				ImGui::SliderInt("Iterations Perfect Glow", &renderer->perfglow_iterations, 0.0, 6.0);
+				ImGui::TreePop();
+			}
+
+			if (ImGui::TreeNode("Depth Of Field")) {
+				ImGui::Checkbox("Depth Of Field", &renderer->depth_field);
+				ImGui::SliderFloat("Apperture Depth Field", &renderer->apperture, 0.01, 3.0);
+				ImGui::SliderFloat("Focal Length Depth Field", &renderer->focal_length, 0.0, 3.0);
+				ImGui::SliderFloat("Focal Range Depth Field", &renderer->focal_range, 0.01, 3.0);
+				ImGui::Checkbox("Show depth of field", &renderer->show_depth_field);
+				ImGui::TreePop();
+			}
+
+			if (ImGui::TreeNode("Grain")) {
+				ImGui::Checkbox("Grain", &renderer->grain);
+				ImGui::SliderFloat("Grain Intensiry", &renderer->grainIntensity, 0.01, 1.0);
+				ImGui::TreePop();
+			}
+
+			if (ImGui::TreeNode("Motion Blur")) {
+				ImGui::Checkbox("Motion Blur", &renderer->motionBlur);
+				ImGui::TreePop();
+			}
+
+			ImGui::TreePop();
+		}
 	}
 	//add info to the debug panel about the camera
 	if (ImGui::TreeNode(camera, "Camera")) {

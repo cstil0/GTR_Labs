@@ -383,8 +383,6 @@ void Renderer::renderScene_RenderCalls(Camera* camera, FBO* fboToRender) {
 	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 	checkGLErrors();
 
-	renderSkybox(camera, scene->skybox);
-
 	// Create the lights vector
 	lights.clear();
 	decals.clear();
@@ -537,13 +535,13 @@ void Renderer::renderMeshWithMaterial(Matrix44 model, Mesh* mesh, GTR::Material*
 	shader->setUniform("u_alpha_cutoff", material->alpha_mode == GTR::eAlphaMode::MASK ? material->alpha_cutoff : 0);
 	
 	if (scene_reflection) {
-		// POR DEFECTO, LA TEXTURA DE REFLECTION SERÁ LA DEL SKYBOX
+		// by default, reflection texture will be the skybox
 		Texture* reflection = scene->skybox;
 		if (reflection_probes.size() && !is_rendering_reflections)
 		{
 			int nearest_index = -1;
 			float nearest_distance = 1000000.0;
-			// search which probe is the nearest one
+			// search which probe is the nearest one to the mesh
 			for (int i = 0; i < reflection_probes.size(); i++) {
 				Vector3 mesh_position = model.getTranslation();
 				Vector3 probe_position = reflection_probes[i]->pos;
@@ -555,7 +553,6 @@ void Renderer::renderMeshWithMaterial(Matrix44 model, Mesh* mesh, GTR::Material*
 				}
 			}
 			reflection = reflection_probes[nearest_index]->cubemap;
-			//reflection = reflection_probes[0]->cubemap;
 		}
 
 		shader->setUniform("u_skybox_texture", reflection, 7);
@@ -973,6 +970,11 @@ void GTR::Renderer::renderSkybox(Camera* camera, Texture* skybox)
 	shader->setUniform("u_camera_pos", camera->eye);
 	shader->setUniform("u_model", model);
 	shader->setUniform("u_texture", skybox, 0);
+	// in deferred the color correction is applied to all gbuffer0 so we would apply it two times to the skybox
+	if (pipeline == DEFERRED || !gamma)
+		shader->setUniform("u_gamma", 0);
+	else
+		shader->setUniform("u_gamma", 1);
 
 	mesh->render(GL_TRIANGLES);
 	shader->disable();
@@ -2673,8 +2675,6 @@ void GTR::Renderer::renderInMenu() {
 	else {
 		ImGui::Combo("Textures", &debug_texture, "COMPLETE\0NORMAL\0OCCLUSION\0EMISSIVE\0METALNESS\0ROUGHNESS");
 	}
-	ImGui::Checkbox("Show probes", &show_probes);
-	ImGui::Checkbox("Show probes texture", &show_probes_texture);
 	ImGui::Checkbox("Global metrough", &global_metrough);
 	ImGui::SliderFloat("Global metalness", &global_metalness, 0.0, 1.0);
 	ImGui::SliderFloat("Global roughness", &global_roughness, 0.0, 1.0);

@@ -2788,21 +2788,12 @@ in vec2 v_uv;
 precision highp float;
 uniform sampler2D u_texture;
 uniform sampler2D u_textureB;
-uniform sampler2D u_depth_texture;
 uniform int u_show_depth;
 uniform sampler2D u_lin_depth_texture;
-uniform mat4 u_inverse_viewprojection;
-uniform vec3 u_camera_position;
-uniform vec2 u_iRes;
 
 uniform float u_focal_length;
 uniform float u_focal_range;
 uniform float u_apperture;
-uniform float u_standard_deviation;
-uniform float u_gaussian_comp;
-
-uniform vec2 u_offset;
-uniform float u_intensity;
 
 out vec4 FragColor;
 
@@ -2931,13 +2922,19 @@ in vec3 v_position;
 in vec3 v_world_position;
 uniform vec3 u_camera_pos;
 uniform samplerCube u_texture;
+uniform int u_gamma;
 
 out vec4 FragColor;
+#include degamma
 
 void main()
 {
 	vec3 V = v_world_position - u_camera_pos;
-	FragColor = texture(u_texture, V);
+	vec4 color = texture(u_texture, V);
+	if (u_gamma == 1)
+		color.xyz = degamma(color.xyz);
+
+	FragColor = color;
 }
 
 //---------------------------------- Depth ----------------------------------------
