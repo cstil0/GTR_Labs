@@ -2392,15 +2392,16 @@ void GTR::Renderer::generateReflectionProbes() {
 
 	for (int i = 0; i < scene->entities.size(); i++)
 	{
-		if (i != 2)
-			continue;
+		//if (i != 2)
+		//	continue;
 		if (scene->entities[i]->entity_type == eEntityType::PREFAB)
 		{
+			// TROBAR POSICIÓ LOCAL CONVERTIR A MON, ROTAR
 			PrefabEntity* currentEntity = (PrefabEntity*)scene->entities[i];
 			Vector3 center = currentEntity->prefab->bounding.center;
 			Vector3 centerWorld = currentEntity->model * center;
 			Vector3 halfSize = currentEntity->prefab->bounding.halfsize;
-			float rot_angle = currentEntity->angle;
+			float rot_angle = currentEntity->angle + 40;
 			Matrix44 rot_matrix = Matrix44();
 
 			rot_matrix.m[0] = cos(rot_angle*DEG2RAD); rot_matrix.m[4] = 0; rot_matrix.m[8] = sin(rot_angle * DEG2RAD); rot_matrix.m[12] = 0;
@@ -2408,11 +2409,17 @@ void GTR::Renderer::generateReflectionProbes() {
 			rot_matrix.m[2] = -sin(rot_angle * DEG2RAD); rot_matrix.m[6] = 0; rot_matrix.m[10] = cos(rot_angle * DEG2RAD); rot_matrix.m[14] = 0;
 			rot_matrix.m[3] = 0; rot_matrix.m[7] = 0; rot_matrix.m[11] = 0; rot_matrix.m[15] = 1;
 
+
 			// SE PUEDE HACER UN FOR PARA CADA LADO DEL OBJETO
 			sReflectionProbe* p1 = new sReflectionProbe();
-			float posY = centerWorld.y + halfSize.y + p1->size;
-			p1->pos.set(centerWorld.x, posY, centerWorld.z);
-			p1->pos = rot_matrix * p1->pos;
+			//float posY = centerWorld.y + halfSize.y + p1->size;
+			float posY = center.y + halfSize.y + p1->size;
+			Vector3 pos1 = Vector3(center.x, posY, center.z);
+			pos1 = rot_matrix * pos1;
+			pos1 = currentEntity->model * pos1;
+			p1->pos.set(pos1.x, pos1.y, pos1.z);
+			//p1->pos.set(centerWorld.x, posY, centerWorld.z);
+			//p1->pos = rot_matrix * p1->pos;
 
 			if (!p1->cubemap) {
 				p1->cubemap = new Texture();
@@ -2422,9 +2429,12 @@ void GTR::Renderer::generateReflectionProbes() {
 			reflection_probes.push_back(p1);
 
 			sReflectionProbe* p2 = new sReflectionProbe();
-			float posX = centerWorld.x + halfSize.x + p2->size;
-			p2->pos.set(posX, centerWorld.y, centerWorld.z);
-			p2->pos = rot_matrix * p2->pos;
+			float posX = center.x + halfSize.x + p2->size;
+			Vector3 pos2 = Vector3(posX, center.y, center.z);
+			pos2 = rot_matrix * pos2;
+			pos2 = currentEntity->model * pos2;
+			p2->pos.set(pos2.x, pos2.y, pos2.z);
+			//p2->pos = rot_matrix * p2->pos;
 
 			if (!p2->cubemap) {
 				p2->cubemap = new Texture();
@@ -2433,9 +2443,13 @@ void GTR::Renderer::generateReflectionProbes() {
 			reflection_probes.push_back(p2);
 
 			sReflectionProbe* p3 = new sReflectionProbe();
-			float posX_n = centerWorld.x - (halfSize.y + p3->size);
-			p3->pos.set(posX_n, centerWorld.y, centerWorld.z);
-			p3->pos = rot_matrix * p3->pos;
+			float posX_n = center.x - (halfSize.y + p3->size);
+			Vector3 pos3 = Vector3(posX_n, center.y, center.z);
+			pos3 = rot_matrix * pos3;
+			pos3 = currentEntity->model * pos3;
+			p3->pos.set(pos3.x, pos3.y, pos3.z);
+			//p3->pos.set(posX_n, centerWorld.y, centerWorld.z);
+			//p3->pos = rot_matrix * p3->pos;
 
 			if (!p3->cubemap) {
 				p3->cubemap = new Texture();
@@ -2444,9 +2458,13 @@ void GTR::Renderer::generateReflectionProbes() {
 			reflection_probes.push_back(p3);
 
 			sReflectionProbe* p4 = new sReflectionProbe();
-			float posZ = centerWorld.z + halfSize.z + p4->size;
-			p4->pos.set(centerWorld.x, centerWorld.y, posZ);
-			p4->pos = rot_matrix * p4->pos;
+			float posZ = center.z + halfSize.z + p4->size;
+			Vector3 pos4 = Vector3(center.x, center.y, posZ);
+			pos4 = rot_matrix * pos4;
+			pos4 = currentEntity->model * pos4;
+			p4->pos.set(pos4.x, pos4.y, pos4.z);
+			//p4->pos.set(center.x, center.y, posZ);
+			//p4->pos = rot_matrix * p4->pos;
 
 			if (!p4->cubemap) {
 				p4->cubemap = new Texture();
@@ -2455,9 +2473,14 @@ void GTR::Renderer::generateReflectionProbes() {
 			reflection_probes.push_back(p4);
 
 			sReflectionProbe* p5 = new sReflectionProbe();
-			float posZ_n = centerWorld.z - (halfSize.z + p5->size);
-			p5->pos.set(centerWorld.x, centerWorld.y, posZ_n);
-			p5->pos = rot_matrix * p5->pos;
+			float posZ_n = center.z - (halfSize.z + p5->size);
+			Vector3 pos5 = Vector3(center.x, center.y, posZ_n);
+			pos5 = rot_matrix * pos5;
+			pos5 = currentEntity->model * pos5;
+			p5->pos.set(pos5.x, pos5.y, pos5.z);
+
+			//p5->pos.set(centerWorld.x, centerWorld.y, posZ_n);
+			//p5->pos = rot_matrix * p5->pos;
 
 			if (!p5->cubemap) {
 				p5->cubemap = new Texture();
