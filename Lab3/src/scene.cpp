@@ -191,6 +191,8 @@ void GTR::PrefabEntity::configure(cJSON* json)
 		filename = cJSON_GetObjectItem(json, "filename")->valuestring;
 		prefab = GTR::Prefab::Get( (std::string("data/") + filename).c_str());
 	}
+	angle = readJSONNumber(json, "angle", angle);
+
 	//for (int i = 0; i < prefab->nodes_by_name.size(); i++) {
 
 	//	prefab->nodes_by_name[i]->material->planar_reflections = readJSONBool(json, "planar_reflections", false);
@@ -292,7 +294,6 @@ void GTR::LightEntity::configure(cJSON* json)
 	else
 		light_type = eTypeOfLight::NONE;
 
-	//angle = readJSONNumber(json, "angle", angle);
 	area_size = readJSONNumber(json, "area_size", area_size);
 	max_distance = readJSONNumber(json, "max_dist", max_distance);
 	cone_angle = readJSONNumber(json, "cone_angle", cone_angle);

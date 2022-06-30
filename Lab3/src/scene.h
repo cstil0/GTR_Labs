@@ -51,6 +51,7 @@ namespace GTR {
 	public:
 		std::string filename;
 		Prefab* prefab;
+		float angle;
 
 		PrefabEntity();
 		virtual void renderInMenu();
@@ -71,7 +72,6 @@ namespace GTR {
 		Vector3 color;
 		float intensity;
 		int light_type;
-		//float angle;
 		bool volumetric;
 
 		int shadow_i;

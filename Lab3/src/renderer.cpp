@@ -714,8 +714,6 @@ void Renderer::renderMeshWithMaterial(Matrix44 model, Mesh* mesh, GTR::Material*
 			}
 			reflection = reflection_probes[nearest_index]->cubemap;
 			//reflection = reflection_probes[0]->cubemap;
-
-
 		}
 
 		shader->setUniform("u_skybox_texture", reflection, 7);
@@ -725,6 +723,8 @@ void Renderer::renderMeshWithMaterial(Matrix44 model, Mesh* mesh, GTR::Material*
 		shader->setUniform("u_scene_reflections", 0);
 		shader->setUniform("u_skybox_texture", Texture::getBlackTexture(), 7);
 	}
+
+	shader->setUniform("u_has_planar_reflections", planar_reflection ? 1 : 0);
 	// pass light parameters
 	if (typeOfRender == eRenderPipeline::SINGLEPASS) {
 		setSinglepass_parameters(material, shader, mesh);
@@ -735,6 +735,7 @@ void Renderer::renderMeshWithMaterial(Matrix44 model, Mesh* mesh, GTR::Material*
 		setMultipassParameters(material, shader, mesh);
 		shader->disable();
 	}
+	mesh->renderBounding(model, false);
 
 	if (irradiance && probes_texture)
 		computeIrradianceForward(mesh, model, material, camera, i);
@@ -2391,17 +2392,27 @@ void GTR::Renderer::generateReflectionProbes() {
 
 	for (int i = 0; i < scene->entities.size(); i++)
 	{
+		if (i != 2)
+			continue;
 		if (scene->entities[i]->entity_type == eEntityType::PREFAB)
 		{
 			PrefabEntity* currentEntity = (PrefabEntity*)scene->entities[i];
 			Vector3 center = currentEntity->prefab->bounding.center;
 			Vector3 centerWorld = currentEntity->model * center;
 			Vector3 halfSize = currentEntity->prefab->bounding.halfsize;
+			float rot_angle = currentEntity->angle;
+			Matrix44 rot_matrix = Matrix44();
+
+			rot_matrix.m[0] = cos(rot_angle*DEG2RAD); rot_matrix.m[4] = 0; rot_matrix.m[8] = sin(rot_angle * DEG2RAD); rot_matrix.m[12] = 0;
+			rot_matrix.m[1] = 0; rot_matrix.m[5] = 1; rot_matrix.m[9] = 0; rot_matrix.m[13] = 0;
+			rot_matrix.m[2] = -sin(rot_angle * DEG2RAD); rot_matrix.m[6] = 0; rot_matrix.m[10] = cos(rot_angle * DEG2RAD); rot_matrix.m[14] = 0;
+			rot_matrix.m[3] = 0; rot_matrix.m[7] = 0; rot_matrix.m[11] = 0; rot_matrix.m[15] = 1;
 
 			// SE PUEDE HACER UN FOR PARA CADA LADO DEL OBJETO
 			sReflectionProbe* p1 = new sReflectionProbe();
 			float posY = centerWorld.y + halfSize.y + p1->size;
 			p1->pos.set(centerWorld.x, posY, centerWorld.z);
+			p1->pos = rot_matrix * p1->pos;
 
 			if (!p1->cubemap) {
 				p1->cubemap = new Texture();
@@ -2413,6 +2424,7 @@ void GTR::Renderer::generateReflectionProbes() {
 			sReflectionProbe* p2 = new sReflectionProbe();
 			float posX = centerWorld.x + halfSize.x + p2->size;
 			p2->pos.set(posX, centerWorld.y, centerWorld.z);
+			p2->pos = rot_matrix * p2->pos;
 
 			if (!p2->cubemap) {
 				p2->cubemap = new Texture();
@@ -2421,8 +2433,9 @@ void GTR::Renderer::generateReflectionProbes() {
 			reflection_probes.push_back(p2);
 
 			sReflectionProbe* p3 = new sReflectionProbe();
-			posX = centerWorld.x - halfSize.y + p3->size;
-			p3->pos.set(posX, centerWorld.y, centerWorld.z);
+			float posX_n = centerWorld.x - (halfSize.y + p3->size);
+			p3->pos.set(posX_n, centerWorld.y, centerWorld.z);
+			p3->pos = rot_matrix * p3->pos;
 
 			if (!p3->cubemap) {
 				p3->cubemap = new Texture();
@@ -2433,6 +2446,7 @@ void GTR::Renderer::generateReflectionProbes() {
 			sReflectionProbe* p4 = new sReflectionProbe();
 			float posZ = centerWorld.z + halfSize.z + p4->size;
 			p4->pos.set(centerWorld.x, centerWorld.y, posZ);
+			p4->pos = rot_matrix * p4->pos;
 
 			if (!p4->cubemap) {
 				p4->cubemap = new Texture();
@@ -2441,8 +2455,9 @@ void GTR::Renderer::generateReflectionProbes() {
 			reflection_probes.push_back(p4);
 
 			sReflectionProbe* p5 = new sReflectionProbe();
-			posZ = centerWorld.z + halfSize.z + p5->size;
-			p5->pos.set(centerWorld.x, centerWorld.y, posZ);
+			float posZ_n = centerWorld.z - (halfSize.z + p5->size);
+			p5->pos.set(centerWorld.x, centerWorld.y, posZ_n);
+			p5->pos = rot_matrix * p5->pos;
 
 			if (!p5->cubemap) {
 				p5->cubemap = new Texture();

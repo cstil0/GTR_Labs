@@ -848,7 +848,7 @@ void main()
 		discard;
 
 	// AHORA ESTAMOS MIRANDO QUE SOLO EL SUELO REFLECTE VIENDO LA ALTURA DEL PIXEL, PERO ES UN POCO CUTRE
-	if (u_has_planar_reflections == 1 && abs(v_world_position.y) < 0.1)
+	if ((u_has_planar_reflections == 1 || u_scene_reflections == 1) && abs(v_world_position.y) < 0.1)
 		planar_reflection_color = texture(u_planar_reflections_texture, uv_screen).xyz;
 	
 	vec3 light = u_ambient_light;
@@ -878,14 +878,15 @@ void main()
 	}
 
 	color *= texture_color;
-	if (u_has_planar_reflections == 1 && abs(v_world_position.y) < 0.1)
-		color.xyz = mix(color.xyz, planar_reflection_color, 0.5);
 
-	if (u_scene_reflections == 1){
+	if (u_scene_reflections == 1 && abs(v_world_position.y) > 0.1){
 		//float reflection_factor = 1.0;
 		float reflection_factor = met_rough.z + u_metallic_factor;
 		color.xyz = mix(color.xyz, reflection_color, reflection_factor);
 	}
+	
+	if ((u_has_planar_reflections == 1 || u_scene_reflections == 1) && abs(v_world_position.y) < 0.1)
+		color.xyz = mix(color.xyz, planar_reflection_color, 0.5);
 
 	if(color.a < u_alpha_cutoff)
 		discard;
@@ -1325,7 +1326,7 @@ void main()
 	if (u_has_planar_reflections == 0 && v_world_position.y < 0)
 		discard;
 
-	if (u_has_planar_reflections == 1 && abs(v_world_position.y) < 0.1)
+	if ((u_has_planar_reflections == 1 || u_scene_reflections == 1) && abs(v_world_position.y) < 0.1)
 		planar_reflection_color = texture(u_planar_reflections_texture, uv_screen).xyz;
 
 	// V YA SE CALCULA DENTRO DE LAS FUNCIONES POINT, SPOT.. HAY QUE REVISARLO
@@ -1353,14 +1354,15 @@ void main()
 		reflection_color = degamma(reflection_color);
 	}
 
-	if (u_has_planar_reflections == 1 && abs(v_world_position.y) < 0.1)
-		color.xyz = mix(color.xyz, planar_reflection_color, 0.5);
 
-	if (u_scene_reflections == 1){
+	if (u_scene_reflections == 1 && abs(v_world_position.y) > 0.1){
 		float reflection_factor = metalness + u_metallic_factor;
 		//float reflection_factor = 1.0;
 		color.xyz = mix(color.xyz, reflection_color, reflection_factor);
 	}
+
+	if ((u_has_planar_reflections == 1 || u_scene_reflections == 1) && abs(v_world_position.y) < 0.1)
+		color.xyz = mix(color.xyz, planar_reflection_color, 0.5);
 
 	color *= color_texture;
 	// Point
