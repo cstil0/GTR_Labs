@@ -194,6 +194,7 @@ namespace GTR {
 		bool depth_field;
 		bool antialiasing;
 		bool grain;
+		bool motionBlur;
 
 		float saturation_intensity;
 		float vigneting_intensity;
@@ -296,6 +297,7 @@ namespace GTR {
 		Texture* applyBlurring(Shader* fxshader, Texture* draw_texture1, Texture* draw_texture2, Texture* read_texture, int iterations);
 		Texture* applyDepthField(Shader* fxshader, Camera* camera, Texture* draw_texture1, Texture* draw_texture2, Texture* draw_texture3, Texture* draw_texture4, Texture* read_texture, Texture* depth_texture);
 		Texture* applyGrain(Shader* fxshader, Camera* camera, Texture* draw_texture, Texture* read_texture);
+		Texture* applyMotionBlur(Shader* fxshader, Camera* camera, Texture* draw_texture, Texture* read_texture, Texture* depth_texture);
 		void saveReflectionProbesToDisk();
 		bool loadReflectionProbesFromDisk();
 

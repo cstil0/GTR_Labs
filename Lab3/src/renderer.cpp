@@ -110,6 +110,7 @@ GTR::Renderer::Renderer()
 	depth_field = true;
 	antialiasing = true;
 	grain = false;
+	motionBlur = false;
 
 	saturation_intensity = 1.0;
 	vigneting_intensity = 0.0;
@@ -2973,6 +2974,24 @@ Texture* GTR::Renderer::applyGrain(Shader* fxshader, Camera* camera, Texture* dr
 	return draw_texture;
 }
 
+Texture* GTR::Renderer::applyMotionBlur(Shader* fxshader, Camera* camera, Texture* draw_texture, Texture* read_texture, Texture* depth_texture) {
+	FBO* fbo = Texture::getGlobalFBO(draw_texture);
+	fbo->bind();
+	Matrix44 inv_vp = camera->viewprojection_matrix;
+	inv_vp.inverse();
+
+	fxshader = Shader::Get("motionblur");
+	fxshader->enable();
+	fxshader->setUniform("u_depth_texture", depth_texture, 1);
+	fxshader->setUniform("u_inverse_viewprojection", inv_vp);
+	fxshader->setUniform("u_viewprojection_last", vp_matrix_last);
+	read_texture->toViewport(fxshader);
+	fbo->unbind();
+	
+	vp_matrix_last = camera->viewprojection_matrix;
+	return draw_texture;
+}
+
 
 Texture* GTR::Renderer::applyFX(Camera* camera, Texture* color_texture, Texture* depth_texture)
 {
@@ -2990,23 +3009,6 @@ Texture* GTR::Renderer::applyFX(Camera* camera, Texture* color_texture, Texture*
 	//	current_texture = postFX_textureA;
 	//	std::swap(postFX_textureA, postFX_textureB);
 	//}
-
-	//FBO* fbo = Texture::getGlobalFBO(postFX_textureA);
-	//fbo->bind();
-	//Matrix44 inv_vp = camera->viewprojection_matrix;
-	//inv_vp.inverse();
-
-	//fxshader = Shader::Get("motionblur");
-	//fxshader->enable();
-	//fxshader->setUniform("u_depth_texture", depth_texture, 1);
-	//fxshader->setUniform("u_inverse_viewprojection", inv_vp);
-	//fxshader->setUniform("u_viewprojection_last", vp_matrix_last);
-	//current_texture->toViewport(fxshader);
-	//fbo->unbind();
-	//current_texture = postFX_textureA;
-	//std::swap(postFX_textureA, postFX_textureB);
-
-	//vp_matrix_last = camera->viewprojection_matrix;
 
 	 //-- Antialiasing --
 	if (antialiasing) {
@@ -3060,6 +3062,12 @@ Texture* GTR::Renderer::applyFX(Camera* camera, Texture* color_texture, Texture*
 
 	if (grain) {
 		postFX_textureA = applyGrain(fxshader, camera, postFX_textureA, current_texture);
+		current_texture = postFX_textureA;
+		std::swap(postFX_textureA, postFX_textureB);
+	}
+	
+	if (motionBlur) {
+		postFX_textureA = applyMotionBlur(fxshader, camera, postFX_textureA, current_texture, depth_texture);
 		current_texture = postFX_textureA;
 		std::swap(postFX_textureA, postFX_textureB);
 	}

@@ -333,6 +333,7 @@ void Application::renderDebugGUI(void)
 		ImGui::Checkbox("Perfect Glow", &renderer->perfect_glow);
 		ImGui::Checkbox("Depth Of Field", &renderer->depth_field);
 		ImGui::Checkbox("Grain", &renderer->grain);
+		ImGui::Checkbox("Motion Blur", &renderer->motionBlur);
 		if (ImGui::TreeNode("PostFX Parameters")) {
 			ImGui::SliderFloat("Saturation Intensity", &renderer->saturation_intensity, 0.0, 3.0);
 			ImGui::SliderFloat("Vigneting Intensity", &renderer->vigneting_intensity, 0.0, 3.0);
